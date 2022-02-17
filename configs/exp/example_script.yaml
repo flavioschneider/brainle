@@ -1,0 +1,7 @@
+type: script 
+
+script:
+  _target_: brainle.scripts.my_script.MyScript
+  config:
+    attribute_1: false 
+    attribute_2: ${work_dir}/data/

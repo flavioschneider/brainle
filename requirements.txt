@@ -1,0 +1,19 @@
+# Config
+notebook==6.4.4
+ipywidgets==7.6.5
+python-dotenv==0.19.2
+hydra-core==1.1.1
+# ML  
+numpy==1.22.2
+scikit-learn==1.0.2
+scipy==1.8.0
+pandas==1.4.1
+data-science-types==0.2.23
+torch==1.10.2
+torchvision==0.11.3
+torchmetrics==0.7.2
+pytorch-lightning==1.5.10
+einops==0.4.0
+# Other
+plotly==5.3.1 
+tqdm==4.62.3
