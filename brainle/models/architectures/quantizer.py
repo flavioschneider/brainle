@@ -34,8 +34,8 @@ class VectorQuantizer(nn.Module):
         )  # [n, k]
 
         encoding_indices = torch.argmin(distances, dim=1)  # [n]
-        encodings = F.one_hot(encoding_indices, num_classes=self.num_embeddings).to(
-            z
+        encodings = F.one_hot(
+            encoding_indices, num_classes=self.num_embeddings
         )  # [n, k]
         encodings_mean = reduce(encodings, "n k -> k", "mean")
         perplexity = torch.exp(
@@ -45,17 +45,13 @@ class VectorQuantizer(nn.Module):
         z_quantized_flat = self.embedding(encoding_indices)  # [n, d]
         z_quantized = rearrange(z_quantized_flat, "(b h w) d -> b d h w", b=b, w=w, h=h)
 
-        loss_encoder = F.mse_loss(
-            z_quantized.detach(), z
-        )  # Force encoder output to match codebook
-        loss_codebook = F.mse_loss(
-            z_quantized, z.detach()
-        )  # Force codebook to match encoder output
+        # Force encoder output to match codebook
+        loss_encoder = F.mse_loss(z_quantized.detach(), z)
+        # Force codebook to match encoder output
+        loss_codebook = F.mse_loss(z_quantized, z.detach())
         loss = self.beta * loss_encoder + loss_codebook
-
-        z_quantized = (
-            z + (z_quantized - z).detach()
-        )  # To preserve gradients through codebook
+        # To preserve gradients through codebook
+        z_quantized = z + (z_quantized - z).detach()
 
         return {
             "quantized": z_quantized,

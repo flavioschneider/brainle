@@ -1,12 +1,11 @@
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from torch.utils.data import DataLoader
-from torch.utils.data import random_split
+from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
-import pytorch_lightning as pl
-from .architectures.convnext import ConvNeXtEncoder, ConvNeXtDecoder
+
+from .architectures.convnext import ConvNeXtDecoder, ConvNeXtEncoder
 from .architectures.quantizer import VectorQuantizer
 
 

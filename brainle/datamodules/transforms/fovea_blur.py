@@ -1,8 +1,8 @@
+import math
 from typing import Tuple
 
-import numpy as np
 import cv2
-import math
+import numpy as np
 from PIL import Image
 
 

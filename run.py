@@ -1,8 +1,9 @@
+import logging
 import os
+
 import dotenv
 import hydra
 import pytorch_lightning as pl
-import logging
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig
 

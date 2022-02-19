@@ -1,6 +1,7 @@
-from typing import Optional, Callable, List
 import os
 import zipfile
+from typing import Callable, List, Optional
+
 from PIL import Image
 
 

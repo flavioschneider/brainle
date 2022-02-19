@@ -1,7 +1,7 @@
 import torch
 import torchvision
-from pytorch_lightning.callbacks import Callback
 from einops import rearrange
+from pytorch_lightning.callbacks import Callback
 
 
 class VQVAEReconstructionLogger(Callback):
