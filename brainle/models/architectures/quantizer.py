@@ -12,38 +12,38 @@ class VectorQuantizer(nn.Module):
         beta: float = 0.25,  # Encoder loss weight
     ):
         super().__init__()
-        self.num_embeddings = num_embeddings  # [K]
-        self.embedding_dim = embedding_dim  # [D]
+        self.num_embeddings = num_embeddings  # [k]
+        self.embedding_dim = embedding_dim  # [d]
         self.beta = beta
 
         self.embedding = nn.Embedding(num_embeddings, embedding_dim)
         self.embedding.weight.data.uniform_(-1.0 / num_embeddings, 1.0 / num_embeddings)
 
     def forward(self, z: torch.Tensor):
-        B, D, H, W = z.shape
-        assert D == self.embedding_dim
+        b, d, h, w = z.shape
+        assert d == self.embedding_dim
 
-        z_flat = rearrange(z, "B D H W -> (B H W) D")  # [N, D]
-        codebook = self.embedding.weight  # [K, D]
+        z_flat = rearrange(z, "b d h w -> (b h w) d")  # [n, d]
+        codebook = self.embedding.weight  # [k, d]
 
         distances = (
-            reduce(z_flat ** 2, "N D -> N 1", "sum")
-            + reduce(codebook ** 2, "K D -> K", "sum")
+            reduce(z_flat ** 2, "n d -> n 1", "sum")
+            + reduce(codebook ** 2, "k d -> k", "sum")
             - 2
-            * torch.einsum("N D, D K -> N K", z_flat, rearrange(codebook, "K D -> D K"))
-        )  # [N, K]
+            * torch.einsum("n d, d k -> n k", z_flat, rearrange(codebook, "k d -> d k"))
+        )  # [n, k]
 
-        encoding_indices = torch.argmin(distances, dim=1)  # [N]
+        encoding_indices = torch.argmin(distances, dim=1)  # [n]
         encodings = F.one_hot(encoding_indices, num_classes=self.num_embeddings).to(
             z
-        )  # [N, K]
-        encodings_mean = reduce(encodings, "N K -> K", "mean")
+        )  # [n, k]
+        encodings_mean = reduce(encodings, "n k -> k", "mean")
         perplexity = torch.exp(
             -torch.sum(encodings_mean * torch.log(encodings_mean + 1e-10))
         )
 
-        z_quantized_flat = self.embedding(encoding_indices)  # [N, D]
-        z_quantized = rearrange(z_quantized_flat, "(B H W) D -> B D H W", B=B, W=W, H=H)
+        z_quantized_flat = self.embedding(encoding_indices)  # [n, d]
+        z_quantized = rearrange(z_quantized_flat, "(b h w) d -> b d h w", b=b, w=w, h=h)
 
         loss_encoder = F.mse_loss(
             z_quantized.detach(), z

@@ -4,8 +4,7 @@ __pycache__/
 .env
 .hydra
 venv/
-!logs/wandb/.gitkeep
 logs/*
-*!data/.gitkeep
 data/*
+!data/.gitkeep
 outputs/*
