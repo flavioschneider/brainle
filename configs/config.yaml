@@ -4,4 +4,4 @@ defaults:
 
 seed: 12345
 work_dir: ${hydra:runtime.cwd}  # This is the root of the project
-logs_dir: ${oc.env:DIR_SCRATCH}/logs  # This is the root for all logs
+logs_dir: ${oc.env:DIR_LOGS}  # This is the root for all logs

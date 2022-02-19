@@ -1,0 +1,64 @@
+# @package _global_
+type: model
+
+model:
+  _target_: brainle.models.vqvae_model.VQVAEModel
+  in_channels: 3
+  embedding_dim: 192
+  num_embeddings: 1024
+  learning_rate: 0.001
+  beta: 0.25
+
+datamodule:
+  _target_: brainle.datamodules.image_datamodule.ImageDatamodule
+  data_dir: ${work_dir}/data/archive.zip
+  train_val_split: [50000, 11214]
+  batch_size: 64
+  num_workers: 0
+  transform:
+    _target_: torchvision.transforms.Compose
+    transforms:
+      - _target_: torchvision.transforms.Resize
+        size: 128
+      - _target_: torchvision.transforms.RandomCrop
+        size: [128, 128]
+      - _target_: brainle.datamodules.transforms.fovea_blur.FoveaBlur
+      - _target_: torchvision.transforms.PILToTensor
+      - _target_: brainle.datamodules.transforms.to_float.ToFloat
+
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    monitor: "valid_loss"   # name of the logged metric which determines when model is improving
+    save_top_k: 1           # save k best models (determined by above metric)
+    save_last: True         # additionaly always save model from last epoch
+    mode: "min"             # can be "max" or "min"
+    verbose: False
+    dirpath: ${logs_dir}/ckpts/${now:%Y-%m-%d-%H-%M-%S}
+    filename: '{epoch:02d}-{valid_loss:.3f}'
+
+  reconstruction_logger:
+    _target_: brainle.callbacks.vqvae_callback.VQVAEReconstructionLogger
+    batch_frequency: 10
+    num_images: 10
+
+loggers:
+  wandb:
+    _target_: pytorch_lightning.loggers.wandb.WandbLogger
+    project: ${oc.env:WANDB_PROJECT}
+    entity: ${oc.env:WANDB_ENTITY}
+    # offline: False  # set True to store all logs only locally
+    job_type: "train"
+    group: ""
+    save_dir: ${logs_dir}
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  gpus: 0 # Set `1` to train on GPU, `0` to train on CPU only, and `-1` to train on all GPUs, default `0`
+  log_gpu_memory: all # Logs memory of GPUs, default `None`
+  precision: 32 # Precision used for tensors, default `32`
+  accelerator: null # `ddp` GPUs train individually and sync gradients, default `None`
+  min_epochs: 1
+  max_epochs: 100_000
+  weights_summary: top # Prints a summary of the model weights, default `top`
+  log_every_n_steps: 1 # Logs metrics every N batches

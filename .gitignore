@@ -1,8 +1,11 @@
 __pycache__/
 .ipynb_checkpoints/
+.pytest_cache/
 .env
 .hydra
 venv/
+!logs/wandb/.gitkeep
 logs/*
-outputs/*
+*!data/.gitkeep
 data/*
+outputs/*
