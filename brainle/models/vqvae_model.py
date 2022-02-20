@@ -103,10 +103,10 @@ class VQVAEFCModel(pl.LightningModule):
 
         self.cropper = FoveaCropper(out_size=crop_res, sizes=crop_sizes)
         self.encoder = ConvNeXtEncoder(
-            in_channels=in_channels, depths=[3, 3], dims=[96, embedding_dim]
+            in_channels=in_channels, depths=[6], dims=[embedding_dim]
         )
         self.decoder = ConvNeXtDecoder(
-            in_channels=embedding_dim, depths=[3, 3, 3], dims=[96, 24, in_channels]
+            in_channels=embedding_dim, depths=[3, 6], dims=[32, in_channels]
         )
         self.batchnorm = nn.BatchNorm2d(num_features=embedding_dim)
         self.quantizer = VectorQuantizer(
