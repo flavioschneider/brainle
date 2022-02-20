@@ -64,13 +64,24 @@ class VQVAEFCReconstructionLogger(Callback):
 
             images = batch[0 : self.num_images]
             images_crops, images_reconstructed, quantize = pl_module(images)
+            size = max(pl_module.crop_sizes)
 
-            grid = rearrange(
+            grid_recon_crops = rearrange(
                 [images_crops, images_reconstructed],
-                "n b (c crops) h w -> c (crops h) (b n w)",
-                c=3,
+                "n (crops b) c h w -> c (crops h) (b n w)",
+                b=self.num_images,
             )
-            pl_module.logger.log_image(f"{split}_reconstruction", [grid])
+
+            grid_recon_overlap = rearrange(
+                [
+                    pl_module.cropper.get_overlap(images_crops, size=size),
+                    pl_module.cropper.get_overlap(images_reconstructed, size=size),
+                ],
+                "n b c h w -> c h (b n w) ",
+            )
+
+            pl_module.logger.log_image(f"{split}_recon_crops", [grid_recon_crops])
+            pl_module.logger.log_image(f"{split}_recon_overlap", [grid_recon_overlap])
 
             if is_train:
                 pl_module.train()

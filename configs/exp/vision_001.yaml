@@ -9,7 +9,7 @@ type: model
 model:
   _target_: brainle.models.vqvae_model.VQVAEFCModel
   in_channels: 3
-  embedding_dim: 192
+  embedding_dim: 64
   num_embeddings: 1024
   crop_sizes: [16, 32, 64, 128]
   crop_res: 16 # 16x16 crops.
@@ -20,7 +20,7 @@ datamodule:
   _target_: brainle.datamodules.image_datamodule.ImageDatamodule
   data_dir: ${work_dir}/data/archive.zip
   train_val_split: [50000, 11214]
-  batch_size: 128
+  batch_size: 1024
   num_workers: 0
   transform:
     _target_: torchvision.transforms.Compose

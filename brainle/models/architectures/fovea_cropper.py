@@ -27,7 +27,7 @@ class FoveaCropper(nn.Module):
                 )
             ]
 
-        return rearrange(crops, "n b c h w -> b (c n) h w")
+        return rearrange(crops, "n b c h w -> (n b) c h w")
 
     def crop(self, x: torch.Tensor, size: int) -> torch.Tensor:
         b, c, h, w = x.shape
@@ -38,12 +38,12 @@ class FoveaCropper(nn.Module):
     def get_overlap(self, y: torch.Tensor, size: int) -> torch.Tensor:
         """
         Build an image that is the overlapped version of all crops, for visualization purposes.
-        y: the tensor returned by forward of shape [b, c*n, h, w]
+        y: the tensor returned by forward of shape [n*b, c, h, w]
         size: the image output size
         output: a tensor of shape [3, h, w]
         """
-        b = y.shape[0]
-        crops = rearrange(y, "b (c n) h w -> n b c h w", c=3)
+        b = y.shape[0] // len(self.sizes)
+        crops = rearrange(y, "(n b) c h w -> n b c h w", b=b)
         output = torch.zeros([b, 3, size, size]).to(y)
         for crop, s in reversed(list(zip(crops, self.sizes))):
             crop_upscaled = F.resize(
