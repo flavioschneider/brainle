@@ -17,5 +17,5 @@ jupyter notebook
 ## Running experiment
 
 ```bash
-python run.py experiment=exp_XXX
+python run.py exp=exp_XXX
 ```

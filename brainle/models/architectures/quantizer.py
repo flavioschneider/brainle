@@ -37,7 +37,7 @@ class VectorQuantizer(nn.Module):
         encodings = F.one_hot(
             encoding_indices, num_classes=self.num_embeddings
         )  # [n, k]
-        encodings_mean = reduce(encodings, "n k -> k", "mean")
+        encodings_mean = reduce(encodings.float(), "n k -> k", "mean")
         perplexity = torch.exp(
             -torch.sum(encodings_mean * torch.log(encodings_mean + 1e-10))
         )

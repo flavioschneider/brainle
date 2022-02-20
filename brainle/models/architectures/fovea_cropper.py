@@ -14,7 +14,8 @@ class FoveaCropper(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Crops images of different sizes from the center of x and resizes them to the same out_size, rearranging them as new channels.
+        Crops images of different sizes from the center of x and resizes them to the same out_size,
+        rearranging them as new channels.
         """
         crops = []
         for s in self.sizes:

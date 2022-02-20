@@ -13,7 +13,7 @@ datamodule:
   _target_: brainle.datamodules.image_datamodule.ImageDatamodule
   data_dir: ${work_dir}/data/archive.zip
   train_val_split: [50000, 11214]
-  batch_size: 64
+  batch_size: 128
   num_workers: 0
   transform:
     _target_: torchvision.transforms.Compose
@@ -54,7 +54,7 @@ loggers:
 
 trainer:
   _target_: pytorch_lightning.Trainer
-  gpus: 0 # Set `1` to train on GPU, `0` to train on CPU only, and `-1` to train on all GPUs, default `0`
+  gpus: 1 # Set `1` to train on GPU, `0` to train on CPU only, and `-1` to train on all GPUs, default `0`
   log_gpu_memory: all # Logs memory of GPUs, default `None`
   precision: 32 # Precision used for tensors, default `32`
   accelerator: null # `ddp` GPUs train individually and sync gradients, default `None`
