@@ -1,13 +1,10 @@
 # @package _global_
 type: model
 
-# In the previous experiment we found that fovea blur forces the codebook to only learn
-# blurry pieces and fails to get high resoution in the center of the fovea.
-# Fovea cropper should work better for high resolution fovea and less redudant (blurry)
-# information.
+# New encoder, decoder, quantizer
 
-embedding_dim: 64
-num_embeddings: 1024
+embedding_dim: 32
+num_embeddings: 512
 
 model:
   _target_: brainle.models.vqvae_model.VQVAEFCModel
@@ -15,26 +12,34 @@ model:
   crop_res: 16 # 16x16 crops.
   learning_rate: 0.001
   encoder:
-    _target_: brainle.models.architectures.convnext.ConvNeXtEncoder
+    _target_: brainle.models.architectures.residual.ResidualEncoder
     in_channels: 3
-    depts: [6]
-    dims: [${embedding_dim}]
+    out_channels: ${embedding_dim}
+    num_channels: 128
+    num_blocks: 2
+    res_channels: 32
+    num_downscales: 2
   decoder:
-    _target_: brainle.models.architectures.convnext.ConvNeXtDecoder
+    _target_: brainle.models.architectures.residual.ResidualDecoder
     in_channels: ${embedding_dim}
-    depts: [3, 6]
-    dims: [32, 3]
+    out_channels: 3
+    num_channels: 128
+    num_blocks: 2
+    res_channels: 32
+    num_upscales: 2
   quantizer:
-    _target_: brainle.models.architectures.quantizer.VectorQuantizer
+    _target_: brainle.models.architectures.quantizer.VectorQuantizerEMA
     num_embeddings: ${num_embeddings}
     embedding_dim: ${embedding_dim}
     beta: 0.25
+    ema_decay: 0.99
+    ema_epsilon: 1e-5
 
 datamodule:
   _target_: brainle.datamodules.image_datamodule.ImageDatamodule
   data_dir: ${work_dir}/data/archive.zip
   train_val_split: [50000, 11214]
-  batch_size: 1024
+  batch_size: 256
   num_workers: 0
   transform:
     _target_: torchvision.transforms.Compose
@@ -61,6 +66,11 @@ callbacks:
     _target_: brainle.callbacks.vqvae_callback.VQVAEFCReconstructionLogger
     batch_frequency: 10
     num_images: 10
+
+  codebook_distribution_logger:
+    _target_: brainle.callbacks.vqvae_callback.VQVAEFCCodebookDistributionLogger
+    batch_frequency: 10
+    num_embeddings: ${num_embeddings}
 
 loggers:
   wandb:

@@ -89,34 +89,26 @@ class VQVAEModel(pl.LightningModule):
 class VQVAEFCModel(pl.LightningModule):
     def __init__(
         self,
-        in_channels: int,
-        embedding_dim: int,
-        num_embeddings: int,
+        encoder: nn.Module,
+        decoder: nn.Module,
+        quantizer: nn.Module,
         crop_sizes: List[int],
         crop_res: int,
         learning_rate: float,
-        beta: float,
     ):
         super().__init__()
         self.learning_rate = learning_rate
         self.crop_sizes = crop_sizes
 
         self.cropper = FoveaCropper(out_size=crop_res, sizes=crop_sizes)
-        self.encoder = ConvNeXtEncoder(
-            in_channels=in_channels, depths=[6], dims=[embedding_dim]
-        )
-        self.decoder = ConvNeXtDecoder(
-            in_channels=embedding_dim, depths=[3, 6], dims=[32, in_channels]
-        )
-        self.batchnorm = nn.BatchNorm2d(num_features=embedding_dim)
-        self.quantizer = VectorQuantizer(
-            num_embeddings=num_embeddings, embedding_dim=embedding_dim, beta=beta
-        )
+        self.encoder = encoder
+        self.decoder = decoder
+        self.quantizer = quantizer
 
     def forward(self, x: torch.Tensor):
         x_crops = self.cropper(x)
         z = self.encoder(x_crops)
-        quantize = self.quantizer(self.batchnorm(z))
+        quantize = self.quantizer(z)
         x_pred = self.decoder(quantize["quantized"])
         return x_crops, x_pred, quantize
 
