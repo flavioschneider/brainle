@@ -130,7 +130,7 @@ class VQVAEFCCodebookDistributionLogger(Callback):
             wandb_logger = get_wandb_logger(trainer)
             _, _, quantize = pl_module(batch)
             histogram = np.histogram(
-                quantize["encoding_indices"].cpu().numpy(),
+                quantize["encoding_indices"].detach().cpu().numpy(),
                 bins=np.arange(self.num_embeddings),
             )
 
