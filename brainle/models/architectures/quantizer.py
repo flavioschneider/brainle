@@ -138,25 +138,19 @@ class VectorQuantizerEMA(nn.Module):
     ) -> None:
         k = self.num_embeddings
 
-        self.ema_cluster_size = self.ema_decay * self.ema_cluster_size + (
-            1 - self.ema_decay
-        ) * reduce(
-            encodings_onehot, "n k -> k", "sum"
+        batch_cluster_size = reduce(encodings_onehot, "n k -> k", "sum")
+        batch_embedding_avg = torch.einsum(
+            "k n, n d -> k d", encodings_onehot.t(), z_flat
+        )
+
+        self.ema_cluster_size.data.mul_(self.ema_decay).add_(
+            batch_cluster_size, alpha=1 - self.ema_decay
         )  # [k]
 
-        encodings_sum = torch.einsum("k n, n d -> k d", encodings_onehot.t(), z_flat)
-        self.ema_embedding_avg = (
-            self.ema_decay * self.ema_embedding_avg
-            + (1 - self.ema_decay) * encodings_sum
+        self.ema_embedding_avg.data.mul_(self.ema_decay).add_(
+            batch_embedding_avg, alpha=1 - self.ema_decay
         )
-
-        ema_cluster_sum = self.ema_cluster_size.sum()
-        self.ema_cluster_size = (
-            (self.ema_epsilon + self.ema_cluster_size)
-            / (ema_cluster_sum + self.ema_epsilon * k)
-        ) * ema_cluster_sum
-        embedding_normalized = self.ema_embedding_avg / rearrange(
-            self.ema_cluster_size, "k -> k 1"
+        new_embedding = self.ema_embedding_avg / rearrange(
+            self.ema_cluster_size + 1e-5, "k -> k 1"
         )
-
-        self.embedding.weight = nn.Parameter(embedding_normalized)
+        self.embedding.weight.data.copy_(new_embedding)
