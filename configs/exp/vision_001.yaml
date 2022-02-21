@@ -17,12 +17,12 @@ model:
   encoder:
     _target_: brainle.models.architectures.convnext.ConvNeXtEncoder
     in_channels: 3
-    depts: [6]
-    dims: [${embedding_dim}]
+    depths: [6]
+    dims: [64]
   decoder:
     _target_: brainle.models.architectures.convnext.ConvNeXtDecoder
     in_channels: ${embedding_dim}
-    depts: [3, 6]
+    depths: [3, 6]
     dims: [32, 3]
   quantizer:
     _target_: brainle.models.architectures.quantizer.VectorQuantizer

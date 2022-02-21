@@ -96,7 +96,7 @@ class VQVAEFCReconstructionLogger(Callback):
                     pl_module.cropper.get_overlap(images_crops, size=size),
                     pl_module.cropper.get_overlap(images_reconstructed, size=size),
                 ],
-                "n b c h w -> c h (b n w) ",
+                "n b c h w -> c (n h) (b w) ",
             )
 
             pl_module.logger.log_image(f"{split}_recon_crops", [grid_recon_crops])
@@ -130,7 +130,7 @@ class VQVAEFCCodebookDistributionLogger(Callback):
             wandb_logger = get_wandb_logger(trainer)
             _, _, quantize = pl_module(batch)
             histogram = np.histogram(
-                quantize["encoding_indices"].numpy(),
+                quantize["encoding_indices"].cpu().numpy(),
                 bins=np.arange(self.num_embeddings),
             )
 
