@@ -62,6 +62,9 @@ callbacks:
     dirpath: ${logs_dir}/ckpts/${now:%Y-%m-%d-%H-%M-%S}
     filename: '{epoch:02d}-{valid_loss:.3f}'
 
+  gpu_memory_log:
+    _target_: pytorch_lightning.callbacks.DeviceStatsMonitor
+
   reconstruction_logger:
     _target_: brainle.callbacks.vqvae_callback.VQVAEFCReconstructionLogger
     batch_frequency: 10
@@ -85,7 +88,6 @@ loggers:
 trainer:
   _target_: pytorch_lightning.Trainer
   gpus: 0 # Set `1` to train on GPU, `0` to train on CPU only, and `-1` to train on all GPUs, default `0`
-  log_gpu_memory: all # Logs memory of GPUs, default `None`
   precision: 32 # Precision used for tensors, default `32`
   accelerator: null # `ddp` GPUs train individually and sync gradients, default `None`
   min_epochs: 1

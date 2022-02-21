@@ -106,13 +106,14 @@ class VectorQuantizerEMA(nn.Module):
         z_quantized_flat = self.embedding(encoding_indices)  # [n, d]
         z_quantized = rearrange(z_quantized_flat, "(b h w) d -> b d h w", b=b, w=w, h=h)
 
+        # Force encoder output to match embedding
+        loss_encoder = F.mse_loss(z_quantized.detach(), z)
+        loss = self.beta * loss_encoder
+
         # Update embedding with EMA
         if self.training:
             self.update_embedding(z_flat, encodings_onehot)
 
-        # Force encoder output to match embedding
-        loss_encoder = F.mse_loss(z_quantized.detach(), z)
-        loss = self.beta * loss_encoder
         # To preserve gradients through embedding codebook
         z_quantized = z + (z_quantized - z).detach()
 
@@ -158,4 +159,4 @@ class VectorQuantizerEMA(nn.Module):
             self.ema_cluster_size, "k -> k 1"
         )
 
-        self.embedding.weight.data.copy_(embedding_normalized)
+        self.embedding.weight = nn.Parameter(embedding_normalized)
