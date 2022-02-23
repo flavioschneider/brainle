@@ -142,10 +142,10 @@ class VectorQuantizerEMA(nn.Module):
         batch_embedding_avg = torch.einsum(
             "k n, n d -> k d", encodings_onehot.t(), z_flat
         )
-        self.ema_cluster_size.mul_(self.ema_decay).add_(
+        self.ema_cluster_size.data.mul_(self.ema_decay).add_(
             batch_cluster_size, alpha=1 - self.ema_decay
         )  # [k]
-        self.ema_embedding_avg.mul_(self.ema_decay).add_(
+        self.ema_embedding_avg.data.mul_(self.ema_decay).add_(
             batch_embedding_avg, alpha=1 - self.ema_decay
         )
         new_embedding = self.ema_embedding_avg / rearrange(
