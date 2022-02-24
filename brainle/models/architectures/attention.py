@@ -7,6 +7,20 @@ from einops import rearrange
 
 
 class CausalSelfAttention(nn.Module):
+    """
+
+    Summary of variable abbreviations:
+
+    * batch_size = b
+    * embeddings_dim = d
+    * num_embeddings (vocab size, or number of symbols)
+    * num_heads = h
+    * head_dim = hd
+    * block_size = s (max sequence length)
+    * matrix multiply indeces: i,j,l
+
+    """
+
     def __init__(
         self,
         embedding_dim: int,
@@ -17,9 +31,9 @@ class CausalSelfAttention(nn.Module):
         use_mask: bool = True,
     ):
         super().__init__()
-        assert (
-            embedding_dim % num_heads == 0
-        ), "Expected embeddings_dim to be divisible by num_heads"
+        comment = "Expected embeddings_dim to be divisible by num_heads"
+        assert embedding_dim % num_heads == 0, comment
+
         self.embedding_dim = embedding_dim
         self.block_size = block_size
         self.head_dim = embedding_dim // num_heads
@@ -29,7 +43,6 @@ class CausalSelfAttention(nn.Module):
         self.key = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
         self.value = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
         self.head = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
-
         self.dropout_attention = nn.Dropout(p=dropout_attention)
         self.dropout_residual = nn.Dropout(p=dropout_residual)
 
@@ -57,16 +70,66 @@ class CausalSelfAttention(nn.Module):
         return out
 
 
-"""
+class SelfMemoryBlock(nn.Module):
+    """
+    Summary of variable abbreviations:
 
-Summary of variable abbreviations:
+    * embeddings_dim = d
+    * batch_size = b
+    * memory_size = m
+    * kernel_size = k
+    * num_heads = h
+    * head_dim = hd
+    * value_dim = vd
+    * block_size = s (max sequence length)
+    * window_blocks = w
+    * num_embeddings (vocab size, or number of symbols)
+    """
 
-* batch_size = b
-* embeddings_dim = d
-* num_embeddings = k (vocab size, or number of symbols)
-* num_heads = h
-* head_dim = hd
-* block_size = s (max sequence length)
-* matrix multiply indeces: i,j,l
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        memory_size: int,
+        kernel_size: int,
+        stride: int = 1,
+    ):
+        super().__init__()
 
-"""
+        comment = "Expected embeddings_dim to be divisible by num_heads"
+        assert embedding_dim % num_heads == 0, comment
+        comment = "Expected embedding_dim to be divisible by (kernel_size * num_heads)"
+        assert embedding_dim % (kernel_size * num_heads) == 0, comment
+
+        self.embedding_dim = embedding_dim
+        self.num_heads = num_heads
+        self.head_dim = embedding_dim // num_heads
+        self.value_dim = embedding_dim // (kernel_size * num_heads)
+        self.kernel_size = kernel_size
+
+        self.unfold = nn.Unfold(kernel_size=(kernel_size, 1), stride=(stride, 1))
+        self.query = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
+        self.keys = nn.Linear(in_features=self.head_dim, out_features=memory_size)
+        self.values = nn.Linear(in_features=memory_size, out_features=self.value_dim)
+        self.head = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, s, d = x.shape
+        assert d == self.embedding_dim, f"Expected embeddings dim: {self.embedding_dim}"
+        hd, h, k = self.head_dim, self.num_heads, self.kernel_size
+        # Compute queries
+        q = self.query(x)
+        # Slide window to get w blocks of k tokens embeddings and merge with batch dim
+        q = rearrange(q, "b s d -> b d s 1")
+        q = self.unfold(q)
+        q = rearrange(q, "b (d k) w -> (b w k) d", d=d)
+        # Split heads
+        q = rearrange(q, "bwk (h hd) -> (bwk h) hd", hd=hd)
+        # Attend queries to memory
+        att = F.softmax(self.keys(q) / sqrt(hd), dim=-1)
+        att = self.values(att)
+        # Merge all heads in window and compute
+        heads = rearrange(att, "(bw k h) vd -> bw (k h vd)", k=k, h=h)
+        out = self.head(heads)
+        out = rearrange(out, "(b w) d -> b w d", b=b)
+        return out
