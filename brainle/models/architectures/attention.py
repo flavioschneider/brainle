@@ -70,7 +70,7 @@ class CausalSelfAttention(nn.Module):
         return out
 
 
-class SelfMemoryBlock(nn.Module):
+class SelfMemoryEncode(nn.Module):
     """
     Summary of variable abbreviations:
 
@@ -78,10 +78,12 @@ class SelfMemoryBlock(nn.Module):
     * batch_size = b
     * memory_size = m
     * kernel_size = k
+    * stride = st
+    * padding = p
     * num_heads = h
     * head_dim = hd
     * value_dim = vd
-    * block_size = s (max sequence length)
+    * block_size = s
     * window_blocks = w
     * num_embeddings (vocab size, or number of symbols)
     """
@@ -93,6 +95,7 @@ class SelfMemoryBlock(nn.Module):
         memory_size: int,
         kernel_size: int,
         stride: int = 1,
+        padding: int = 0,
     ):
         super().__init__()
 
@@ -106,8 +109,9 @@ class SelfMemoryBlock(nn.Module):
         self.head_dim = embedding_dim // num_heads
         self.value_dim = embedding_dim // (kernel_size * num_heads)
         self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
 
-        self.unfold = nn.Unfold(kernel_size=(kernel_size, 1), stride=(stride, 1))
         self.query = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
         self.keys = nn.Linear(in_features=self.head_dim, out_features=memory_size)
         self.values = nn.Linear(in_features=memory_size, out_features=self.value_dim)
@@ -116,13 +120,14 @@ class SelfMemoryBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, s, d = x.shape
         assert d == self.embedding_dim, f"Expected embeddings dim: {self.embedding_dim}"
-        hd, h, k = self.head_dim, self.num_heads, self.kernel_size
+        hd, h = self.head_dim, self.num_heads
+        k, st, p = self.kernel_size, self.stride, self.padding
         # Compute queries
         q = self.query(x)
         # Slide window to get w blocks of k tokens embeddings and merge with batch dim
         q = rearrange(q, "b s d -> b d s 1")
-        q = self.unfold(q)
-        q = rearrange(q, "b (d k) w -> (b w k) d", d=d)
+        q = F.unfold(q, kernel_size=(k, 1), stride=(st, 1), padding=(p, 0))
+        q = rearrange(q, "b (d k) w -> (b w k) d", d=d, k=k)
         # Split heads
         q = rearrange(q, "bwk (h hd) -> (bwk h) hd", hd=hd)
         # Attend queries to memory
@@ -132,4 +137,74 @@ class SelfMemoryBlock(nn.Module):
         heads = rearrange(att, "(bw k h) vd -> bw (k h vd)", k=k, h=h)
         out = self.head(heads)
         out = rearrange(out, "(b w) d -> b w d", b=b)
+        return out
+
+
+class SelfMemoryDecode(nn.Module):
+    """
+    Summary of variable abbreviations:
+
+    * embeddings_dim = d
+    * batch_size = b
+    * memory_size = m
+    * kernel_size = k
+    * stride = st
+    * padding = p
+    * num_heads = h
+    * head_dim = hd
+    * value_dim = vd
+    * block_size = s
+    * output_size = o
+    * num_embeddings (vocab size, or number of symbols)
+    """
+
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        memory_size: int,
+        kernel_size: int,
+        stride: int = 1,
+        padding: int = 0,
+    ):
+        super().__init__()
+
+        comment = "Expected embeddings_dim to be divisible by num_heads"
+        assert embedding_dim % num_heads == 0, comment
+        comment = "Expected embedding_dim to be divisible by (kernel_size * num_heads)"
+        assert embedding_dim % (kernel_size * num_heads) == 0, comment
+
+        self.embedding_dim = embedding_dim
+        self.num_heads = num_heads
+        self.head_dim = embedding_dim // (kernel_size * num_heads)
+        self.value_dim = embedding_dim // num_heads
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        self.query = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
+        self.keys = nn.Linear(in_features=self.head_dim, out_features=memory_size)
+        self.values = nn.Linear(in_features=memory_size, out_features=self.value_dim)
+        self.head = nn.Linear(in_features=embedding_dim, out_features=embedding_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, s, d = x.shape
+        assert d == self.embedding_dim, f"Expected embeddings dim: {self.embedding_dim}"
+        k, st, p = self.kernel_size, self.stride, self.padding
+        hd, h = self.head_dim, self.num_heads
+        # Compute queries
+        q = self.query(x)
+        # Split heads
+        q = rearrange(q, "b s (k h hd) -> (b s k h) hd", k=k, hd=hd)
+        # Attend queries to memory
+        att = F.softmax(self.keys(q) / sqrt(hd), dim=-1)
+        att = self.values(att)
+        # Fold to tokens and average overlaps
+        att = rearrange(att, "(b s k h) vd -> b (k h vd) s", b=b, s=s, k=k, h=h)
+        output_size = ((s - 1) * st + k - 2 * p, 1)
+        fold = nn.Fold(output_size, kernel_size=(k, 1), stride=(st, 1), padding=(p, 0))
+        out = fold(att) / fold(torch.ones_like(att))
+        out = rearrange(out, "b d o 1 -> b o d")
+        # Compute head
+        out = self.head(out)
         return out
