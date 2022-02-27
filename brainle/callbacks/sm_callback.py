@@ -55,11 +55,15 @@ class TextLogger(Callback):
             ids = rearrange(ids, "b s 1 -> b s")
 
             for i in range(batch_size):
-                text = "".join(dataset.decode(sequence[i].numpy().tolist()))
+                text = "".join(
+                    dataset.decode(sequence[i].detach().cpu().numpy().tolist())
+                )
                 text = "".join(
                     [char if mask[i][idx] else "▢" for idx, char in enumerate(text)]
                 )
-                text_pred = "".join(dataset.decode(ids[i].numpy().tolist()))
+                text_pred = "".join(
+                    dataset.decode(ids[i].detach().cpu().numpy().tolist())
+                )
                 self.text_table.add_data(f"{i}", text, text_pred)
 
             wandb_logger.experiment.log({"text_table": self.text_table})
