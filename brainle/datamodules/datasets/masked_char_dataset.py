@@ -16,7 +16,7 @@ class MaskedCharDataset(Dataset):
         text = normalizer.normalize_str(text)
         text_length = len(text)
         alphabet = sorted(list(set(text)))
-        print(f"Alphabet size {len(alphabet)}")
+        print(f"Alphabet size {len(alphabet) + 1}")
 
         # Keep index 0 for mask
         self.char_to_id = {char: idx + 1 for idx, char in enumerate(alphabet)}
