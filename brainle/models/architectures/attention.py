@@ -1,4 +1,5 @@
 from math import sqrt
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -208,3 +209,94 @@ class SelfMemoryDecode(nn.Module):
         # Compute head
         out = self.head(out)
         return out
+
+
+class SMUNet(nn.Module):
+    def __init__(
+        self,
+        vocabulary_size: int,
+        embedding_dim: int,
+        num_layers: int,
+        memory_sizes: List[int],
+        num_heads: int,
+        kernel_size: int,
+        stride: int,
+        padding: int,
+        use_skip: bool = True,
+    ):
+        super().__init__()
+        comment = "Expected num_layers to equal len(memory_sizes)"
+        assert num_layers == len(memory_sizes), comment
+
+        self.num_layers = num_layers
+        self.use_skip = use_skip
+
+        self.token_embedding = nn.Embedding(
+            num_embeddings=vocabulary_size, embedding_dim=embedding_dim
+        )
+
+        encoders = [
+            nn.Sequential(
+                nn.LayerNorm(embedding_dim),
+                SelfMemoryEncode(
+                    embedding_dim=embedding_dim,
+                    num_heads=num_heads,
+                    memory_size=memory_sizes[i],
+                    kernel_size=kernel_size,
+                    stride=stride,
+                    padding=padding,
+                ),
+                nn.LayerNorm(embedding_dim),
+                nn.GELU(),
+                nn.Linear(in_features=embedding_dim, out_features=embedding_dim),
+            )
+            for i in range(num_layers)
+        ]
+
+        self.encoders = nn.ModuleList(encoders)
+
+        decoders = [
+            nn.Sequential(
+                nn.LayerNorm(embedding_dim),
+                SelfMemoryDecode(
+                    embedding_dim=embedding_dim,
+                    num_heads=num_heads,
+                    memory_size=memory_sizes[i],
+                    kernel_size=kernel_size,
+                    stride=stride,
+                    padding=padding,
+                ),
+                nn.LayerNorm(embedding_dim),
+                nn.GELU(),
+                nn.Linear(in_features=embedding_dim, out_features=embedding_dim),
+            )
+            for i in list(reversed(range(num_layers)))
+        ]
+
+        self.decoders = nn.ModuleList(decoders)
+
+        self.head = nn.Sequential(
+            nn.LayerNorm(embedding_dim),
+            nn.Linear(in_features=embedding_dim, out_features=vocabulary_size),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, s = x.shape
+        L = self.num_layers
+
+        x = self.token_embedding(x)
+        xs = []
+
+        # Encode
+        for i in range(L):
+            x = self.encoders[i](x)
+            if self.use_skip and i < L - 1:
+                xs = [x] + xs
+
+        # Decode
+        for i in range(L):
+            x = self.decoders[i](x)
+            if self.use_skip and i < L - 1:
+                x += xs[i]
+
+        return self.head(x)
