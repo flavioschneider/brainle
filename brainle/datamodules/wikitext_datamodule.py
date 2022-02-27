@@ -30,25 +30,26 @@ class WikiTextDatamodule(pl.LightningDataModule):
         self.p_char_mask = p_char_mask
         self.version = version
         self.pin_memory = pin_memory
+        self.dataset: Any = None
         self.dataset_train: Any = None
         self.dataset_valid: Any = None
 
     def get_wikitext(self, split):
-        dataset = load_dataset("wikitext", self.version, split="train")
+        self.dataset = load_dataset("wikitext", self.version, split="train")
         text = ""
-        for i in range(len(dataset)):
-            text += dataset[i]["text"]
+        for i in range(len(self.dataset)):
+            text += self.dataset[i]["text"]
         return text
 
     def setup(self, stage: Any = None) -> None:
-        dataset = MaskedCharDataset(
+        self.dataset = MaskedCharDataset(
             text=self.get_wikitext("train"),
             block_size=self.block_size,
             p_word_mask=self.p_word_mask,
             p_char_mask=self.p_char_mask,
         )
         self.dataset_train, self.dataset_valid = random_split(
-            dataset, self.train_val_split
+            self.dataset, self.train_val_split
         )
 
     def train_dataloader(self) -> DataLoader:

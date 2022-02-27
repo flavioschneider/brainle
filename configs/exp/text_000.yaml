@@ -5,13 +5,13 @@ type: model
 
 model:
   _target_: brainle.models.sm_model.SMModel
-  learning_rate: 0.001
+  learning_rate: 0.01
   model:
     _target_: brainle.models.architectures.attention.SMUNet
     vocabulary_size: 836
     embedding_dim: 1024
-    num_layers: 6
-    memory_sizes: [512, 512, 1024, 1024, 2048, 4096]
+    num_layers: 1
+    memory_sizes: [512]
     num_heads: 8
     kernel_size: 4
     stride: 2
@@ -37,6 +37,10 @@ callbacks:
     verbose: False
     dirpath: ${logs_dir}/ckpts/${now:%Y-%m-%d-%H-%M-%S}
     filename: '{epoch:02d}-{valid_loss:.3f}'
+
+  text_logger:
+    _target_: brainle.callbacks.sm_callback.TextLogger
+    batch_frequency: 10
 
 loggers:
   wandb:
