@@ -1,7 +1,7 @@
 # @package _global_
 type: model
 
-# SM Model with 6 layers
+# SM Model with 1 layer
 
 model:
   _target_: brainle.models.sm_model.SMModel
@@ -10,8 +10,8 @@ model:
     _target_: brainle.models.architectures.attention.SMUNet
     vocabulary_size: 837
     embedding_dim: 1024
-    num_layers: 6
-    memory_sizes: [512, 512, 1024, 1024, 2048, 4096]
+    num_layers: 1
+    memory_sizes: [512]
     num_heads: 8
     kernel_size: 4
     stride: 2
@@ -20,10 +20,10 @@ model:
 
 datamodule:
   _target_: brainle.datamodules.wikitext_datamodule.WikiTextDatamodule
-  train_val_split: [9_892_399, 1_000_000]
-  batch_size: 16
+  train_val_split: [9_892_783, 1_000_000]
+  batch_size: 32
   num_workers: 0
-  block_size: 512
+  block_size: 128
   p_word_mask: 0.15
   p_char_mask: 0.05
 
