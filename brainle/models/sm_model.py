@@ -21,7 +21,7 @@ class SMModel(pl.LightningModule):
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         x_masked = torch.clone(x)
-        x_masked[mask] = 0
+        x_masked = x * mask
         return self.model(x_masked)
 
     def configure_optimizers(self):

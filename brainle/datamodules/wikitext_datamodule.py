@@ -35,7 +35,7 @@ class WikiTextDatamodule(pl.LightningDataModule):
         self.dataset_valid: Any = None
 
     def get_wikitext(self, split):
-        self.dataset = load_dataset("wikitext", self.version, split="train")
+        self.dataset = load_dataset("wikitext", self.version, split=split)
         text = ""
         for i in range(len(self.dataset)):
             text += self.dataset[i]["text"]
