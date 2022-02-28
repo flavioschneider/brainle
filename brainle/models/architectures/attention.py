@@ -79,6 +79,7 @@ class AttentionBlock(nn.Module):
         block_size: int,
         dropout_attention: float,
         dropout_residual: float,
+        use_mask: bool,
     ):
         super().__init__()
 
@@ -90,6 +91,7 @@ class AttentionBlock(nn.Module):
                 block_size=block_size,
                 dropout_attention=dropout_attention,
                 dropout_residual=dropout_residual,
+                use_mask=use_mask,
             ),
         )
 
@@ -118,6 +120,7 @@ class GPT(nn.Module):
         dropout_embedding: float,
         dropout_attention: float,
         dropout_residual: float,
+        use_mask: bool,
     ):
         super().__init__()
 
@@ -139,6 +142,7 @@ class GPT(nn.Module):
                     block_size=block_size,
                     dropout_attention=dropout_attention,
                     dropout_residual=dropout_residual,
+                    use_mask=use_mask,
                 )
                 for _ in range(num_layers)
             ]
