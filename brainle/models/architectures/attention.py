@@ -372,17 +372,6 @@ class SMUNet(nn.Module):
             nn.Linear(in_features=embedding_dim, out_features=vocabulary_size),
         )
 
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            module.weight.data.normal_(mean=0.0, std=0.02)
-            if isinstance(module, nn.Linear) and module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, s = x.shape
         L = self.num_layers

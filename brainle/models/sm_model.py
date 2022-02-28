@@ -52,5 +52,5 @@ class SMModel(pl.LightningModule):
             rearrange(sequences, "b s -> (b s)"),
         )
 
-        self.log("vaild_loss", loss)
+        self.log("valid_loss", loss)
         return loss
