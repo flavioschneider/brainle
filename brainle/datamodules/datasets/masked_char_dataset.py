@@ -30,7 +30,7 @@ class MaskedCharDataset(Dataset):
         self.pre_tokenizer = Whitespace()
 
     def __len__(self):
-        return len(self.text) - self.block_size
+        return len(self.text) // self.block_size
 
     def encode(self, text: str) -> List[int]:
         return [self.char_to_id[char] for char in text]
@@ -39,7 +39,9 @@ class MaskedCharDataset(Dataset):
         return "".join([self.id_to_char[idx] for idx in ids])
 
     def __getitem__(self, idx):
-        chunk = self.text[idx : idx + self.block_size + 1]
+        chunk = self.text[
+            idx * self.block_size : idx * self.block_size + self.block_size + 1
+        ]
 
         x = torch.tensor(self.encode(chunk), dtype=torch.long)[0 : self.block_size]
         mask = torch.ones_like(x)

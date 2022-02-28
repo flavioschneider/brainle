@@ -20,7 +20,7 @@ model:
 
 datamodule:
   _target_: brainle.datamodules.wikitext_datamodule.WikiTextDatamodule
-  train_val_split: [9_892_783, 1_000_000]
+  train_val_split: [85000, 100]
   batch_size: 32
   num_workers: 0
   block_size: 128

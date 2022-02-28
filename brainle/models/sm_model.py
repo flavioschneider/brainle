@@ -44,4 +44,13 @@ class SMModel(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        pass
+        sequences, masks = batch
+        sequences_pred = self(sequences, masks)
+
+        loss = F.cross_entropy(
+            rearrange(sequences_pred, "b s k -> (b s) k"),
+            rearrange(sequences, "b s -> (b s)"),
+        )
+
+        self.log("vaild_loss", loss)
+        return loss
