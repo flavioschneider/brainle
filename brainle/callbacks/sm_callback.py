@@ -27,7 +27,7 @@ def get_wandb_logger(trainer: Trainer) -> WandbLogger:
 class TextLogger(Callback):
     def __init__(self, batch_frequency: int = 10) -> None:
         self.batch_frequency = batch_frequency
-        self.text_table = wandb.Table(columns=["id", "text_masked", "text"])
+        self.count = 0
 
     def on_train_batch_end(
         self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
@@ -54,6 +54,8 @@ class TextLogger(Callback):
             ids = torch.topk(out, k=1, dim=-1)[1]
             ids = rearrange(ids, "b s 1 -> b s")
 
+            text_table = wandb.Table(columns=["id", "text_masked", "text"])
+
             for i in range(batch_size):
                 text = "".join(
                     dataset.decode(sequence[i].detach().cpu().numpy().tolist())
@@ -64,9 +66,10 @@ class TextLogger(Callback):
                 text_pred = "".join(
                     dataset.decode(ids[i].detach().cpu().numpy().tolist())
                 )
-                self.text_table.add_data(f"{i}", text, text_pred)
+                text_table.add_data(f"{self.count}_{i}", text, text_pred)
 
-            wandb_logger.experiment.log({"text_table": self.text_table})
+            wandb_logger.experiment.log({"text_table": text_table})
+            self.count += 1
 
             if is_train:
                 pl_module.train()

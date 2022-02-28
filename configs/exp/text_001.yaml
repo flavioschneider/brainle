@@ -1,7 +1,7 @@
 # @package _global_
 type: model
 
-# Larger num_embedding
+# SM Model with 6 layers
 
 model:
   _target_: brainle.models.sm_model.SMModel

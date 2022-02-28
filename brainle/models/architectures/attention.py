@@ -71,6 +71,94 @@ class CausalSelfAttention(nn.Module):
         return out
 
 
+class AttentionBlock(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        block_size: int,
+        dropout_attention: float,
+        dropout_residual: float,
+    ):
+        super().__init__()
+
+        self.block_attention = nn.Sequential(
+            nn.LayerNorm(embedding_dim),
+            CausalSelfAttention(
+                embedding_dim=embedding_dim,
+                num_heads=num_heads,
+                block_size=block_size,
+                dropout_attention=dropout_attention,
+                dropout_residual=dropout_residual,
+            ),
+        )
+
+        self.block_mlp = nn.Sequential(
+            nn.LayerNorm(embedding_dim),
+            nn.Linear(in_features=embedding_dim, out_features=4 * embedding_dim),
+            nn.GELU(),
+            nn.Linear(in_features=4 * embedding_dim, out_features=embedding_dim),
+            nn.Dropout(dropout_residual),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.block_attention(x)
+        x = x + self.block_mlp(x)
+        return x
+
+
+class GPT(nn.Module):
+    def __init__(
+        self,
+        vocabulary_size: int,
+        embedding_dim: int,
+        num_layers: int,
+        num_heads: int,
+        block_size: int,
+        dropout_embedding: float,
+        dropout_attention: float,
+        dropout_residual: float,
+    ):
+        super().__init__()
+
+        # Embedding
+        self.token_embedding = nn.Embedding(
+            num_embeddings=vocabulary_size, embedding_dim=embedding_dim
+        )
+        self.position_embedding = nn.Parameter(
+            torch.zeros(1, block_size, embedding_dim)
+        )
+        self.dropout = nn.Dropout(dropout_embedding)
+
+        # Attention blocks
+        self.blocks = nn.Sequential(
+            *[
+                AttentionBlock(
+                    embedding_dim=embedding_dim,
+                    num_heads=num_heads,
+                    block_size=block_size,
+                    dropout_attention=dropout_attention,
+                    dropout_residual=dropout_residual,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        # Layer norm and head
+        self.layer_norm = nn.LayerNorm(embedding_dim)
+        self.head = nn.Linear(
+            in_features=embedding_dim, out_features=vocabulary_size, bias=False
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, s = x.shape
+        x = self.dropout(self.token_embedding(x) + self.position_embedding)
+        x = self.blocks(x)
+        x = self.layer_norm(x)
+        x = self.head(x)
+        return x
+
+
 class SelfMemoryEncode(nn.Module):
     """
     Summary of variable abbreviations:
@@ -279,6 +367,17 @@ class SMUNet(nn.Module):
             nn.LayerNorm(embedding_dim),
             nn.Linear(in_features=embedding_dim, out_features=vocabulary_size),
         )
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, s = x.shape
