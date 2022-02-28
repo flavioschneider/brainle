@@ -54,19 +54,19 @@ class TextLogger(Callback):
             ids = torch.topk(out, k=1, dim=-1)[1]
             ids = rearrange(ids, "b s 1 -> b s")
 
-            text_table = wandb.Table(columns=["id", "text_masked", "text"])
+            text_table = wandb.Table(columns=["id", "text", "text_masked", "text_pred"])
 
             for i in range(batch_size):
                 text = "".join(
                     dataset.decode(sequence[i].detach().cpu().numpy().tolist())
                 )
-                text = "".join(
+                text_masked = "".join(
                     [char if mask[i][idx] else "▢" for idx, char in enumerate(text)]
                 )
                 text_pred = "".join(
                     dataset.decode(ids[i].detach().cpu().numpy().tolist())
                 )
-                text_table.add_data(f"{self.count}_{i}", text, text_pred)
+                text_table.add_data(f"{self.count}_{i}", text, text_masked, text_pred)
 
             wandb_logger.experiment.log({"text_table": text_table})
             self.count += 1

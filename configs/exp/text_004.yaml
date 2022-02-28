@@ -5,7 +5,7 @@ type: model
 
 model:
   _target_: brainle.models.sm_model.SMModel
-  learning_rate: 0.01
+  learning_rate: 0.001
   model:
     _target_: brainle.models.architectures.attention.SMUNet
     vocabulary_size: 837
@@ -21,7 +21,7 @@ model:
 datamodule:
   _target_: brainle.datamodules.wikitext_datamodule.WikiTextDatamodule
   train_val_split: [9_892_399, 1_000_000]
-  batch_size: 16
+  batch_size: 24
   num_workers: 0
   block_size: 512
   p_word_mask: 0.15
