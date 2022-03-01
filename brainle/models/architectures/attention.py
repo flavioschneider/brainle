@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
+from einops.layers.torch import Rearrange
 from torch import Tensor, einsum
 
 
@@ -551,3 +552,225 @@ class MABlock(nn.Module):
         q, k, v = self.to_q(x), self.k, self.v
         out = self.attention(q, k, v)
         return out  # [b, n, out_features]
+
+
+class FeedForwardBlock(nn.Module):
+    def __init__(self, features: int, multiplier: int = 4, dropout: float = 0.0):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.LayerNorm(features),
+            nn.Linear(in_features=features, out_features=features * multiplier),
+            nn.GELU(),
+            nn.Linear(in_features=features * multiplier, out_features=features),
+            nn.Dropout(p=dropout),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.block(x)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(
+        self,
+        features: int,
+        num_heads: int,
+        dropout_attention: float = 0.0,
+        dropout_mlp: float = 0.0,
+        mlp_multiplier: int = 4,
+    ):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(features)
+        self.attention = SABlock(
+            in_features=features,
+            out_features=features,
+            num_heads=num_heads,
+            dropout=dropout_attention,
+        )
+        self.mlp = FeedForwardBlock(
+            features=features, multiplier=mlp_multiplier, dropout=dropout_mlp
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.layer_norm(x)
+        x = x + self.attention(x)
+        x = x + self.mlp(x)
+        return x
+
+
+class PatcherBlock(nn.Module):
+    def __init__(self, kernel_size: int, stride: int, padding: int):
+        super().__init__()
+        self.block = nn.Sequential(
+            Rearrange("b n c -> b c n 1"),
+            nn.Unfold((kernel_size, 1), stride=(stride, 1), padding=(padding, 0)),
+            Rearrange("b (c k) w -> b w k c", k=kernel_size),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.block(x)
+
+
+class UnpatcherBlock(nn.Module):
+    def __init__(self, kernel_size: int, stride: int, padding: int):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, w, k, c = x.shape
+        assert k == self.kernel_size, "Expected third dim to equal kernel_size"
+        # Define fold operation
+        s, p = self.stride, self.padding
+        output_size = ((w - 1) * s + k - 2 * p, 1)
+        fold = nn.Fold(output_size, kernel_size=(k, 1), stride=(s, 1), padding=(p, 0))
+        # Fold input to unpatch, average overlaps
+        x = rearrange(x, "b w k c -> b (c k) w")
+        x = fold(x) / fold(torch.ones_like(x))
+        x = rearrange(x, "b c n 1 -> b n c")
+        return x
+
+
+class ConvTention(nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        out_patch_tokens: int,
+        num_heads: int,
+        num_layers: int,
+        kernel_size: int,
+        stride: int = 1,
+        padding: int = 0,
+        memory_size: int = -1,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.patchify = PatcherBlock(
+            kernel_size=kernel_size, stride=stride, padding=padding
+        )
+
+        self.memory_attention = (
+            MABlock(
+                memory_size=memory_size,
+                in_features=in_features,
+                out_features=in_features,
+                num_heads=num_heads,
+            )
+            if memory_size > 0
+            else nn.Identity()
+        )
+
+        self.transformers = nn.Sequential(
+            *[
+                TransformerBlock(
+                    features=in_features,
+                    num_heads=num_heads,
+                    dropout_attention=dropout,
+                    dropout_mlp=dropout,
+                    mlp_multiplier=4,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.resize_attention = RABlock(
+            in_tokens=kernel_size,
+            out_tokens=out_patch_tokens,
+            in_features=in_features,
+            out_features=out_features,
+            num_heads=num_heads,
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, n, c = x.shape
+        assert c == self.in_features, "Expected third dim to equal in_features"
+        x = self.patchify(x)
+        x = rearrange(x, "b w k c -> (b w) k c")
+        x = self.memory_attention(x)
+        x = self.transformers(x)
+        x = self.resize_attention(x)
+        x = rearrange(x, "(b w) ko co -> b (w ko) co", b=b)
+        return x
+
+
+class ConvTeNet(nn.Module):
+    def __init__(
+        self,
+        vocabulary_size: int,
+        embedding_dim: int,
+        num_layers: int,
+        num_heads: int,
+        use_skip: bool = True,
+    ):
+        super().__init__()
+
+        self.num_layers = num_layers
+        self.use_skip = use_skip
+
+        self.token_embedding = nn.Embedding(
+            num_embeddings=vocabulary_size, embedding_dim=embedding_dim
+        )
+
+        self.encoders = nn.ModuleList(
+            [
+                ConvTention(
+                    in_features=embedding_dim,
+                    out_features=embedding_dim,
+                    num_heads=num_heads,
+                    num_layers=4,
+                    out_patch_tokens=2,
+                    kernel_size=4,
+                    stride=4,
+                    padding=0,
+                    memory_size=0,
+                    dropout=0.1,
+                )
+                for i in range(num_layers)
+            ]
+        )
+
+        self.decoders = nn.ModuleList(
+            [
+                ConvTention(
+                    in_features=embedding_dim,
+                    out_features=embedding_dim,
+                    num_heads=num_heads,
+                    num_layers=4,
+                    out_patch_tokens=8,
+                    kernel_size=4,
+                    stride=4,
+                    padding=0,
+                    memory_size=0,
+                    dropout=0.1,
+                )
+                for i in list(reversed(range(num_layers)))
+            ]
+        )
+
+        self.head = nn.Sequential(
+            nn.LayerNorm(embedding_dim),
+            nn.Linear(in_features=embedding_dim, out_features=vocabulary_size),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, s = x.shape
+        L = self.num_layers
+
+        x = self.token_embedding(x)
+        xs = []
+
+        # Encode
+        for i in range(L):
+            x = self.encoders[i](x)
+            if self.use_skip and i < L - 1:
+                xs = [x] + xs
+
+        # Decode
+        for i in range(L):
+            x = self.decoders[i](x)
+            if self.use_skip and i < L - 1:
+                x += xs[i]
+
+        return self.head(x)
