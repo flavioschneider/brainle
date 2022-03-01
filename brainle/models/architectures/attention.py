@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
+from torch import Tensor, einsum
 
 
 class CausalSelfAttention(nn.Module):
@@ -392,3 +393,161 @@ class SMUNet(nn.Module):
                 x += xs[i]
 
         return self.head(x)
+
+
+"""
+Attention blocks
+"""
+
+
+class AttentionBase(nn.Module):
+    def __init__(
+        self, in_features: int, out_features: int, num_heads: int, dropout: float = 0.0
+    ):
+        super().__init__()
+        comment = "Expected in_features and out_features to be divisible by num_heads"
+        assert in_features % num_heads == 0 and out_features % num_heads == 0, comment
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.num_heads = num_heads
+        self.head_dim = in_features // num_heads
+        self.scale = self.head_dim ** -0.5
+
+        self.to_out = nn.Linear(in_features=out_features, out_features=out_features)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+        # Dimensionaly checks
+        d_in, d_out = self.in_features, self.out_features
+        (q_b, q_n, q_d), (k_b, k_m, k_d), (v_b, v_m, v_d) = q.shape, k.shape, v.shape
+        assert k_b == v_b, "Expected same batch size for k, v"
+        assert q_d == k_d == d_in, f"Expected q, k to have {d_in} features"
+        assert v_d == d_out, f"Expected v to have {d_out} features"
+        assert k_m == v_m, "Expected k, v to have same length"
+        # Split heads
+        h, hd = self.num_heads, self.head_dim
+        q = rearrange(q, "b n (h hd) -> b h n hd", h=h)
+        k = rearrange(k, "b m (h hd) -> b h m hd", h=h)
+        v = rearrange(v, "b m (h vd) -> b h m vd", h=h)
+        # Compute similarty with memory
+        sim = einsum("b h i l, b h j l -> b h i j", q, k) * self.scale
+        # Compute attention scores
+        att = sim.softmax(dim=-1)
+        att = self.dropout(att)
+        # Compute weighted values
+        out = einsum("b h i l, b h l j -> b h i j", att, v)
+        out = rearrange(out, "b h n vd -> b n (h vd)", h=h)
+        return self.to_out(out)
+
+
+class SABlock(nn.Module):
+    """Self Attention Block"""
+
+    def __init__(
+        self, in_features: int, out_features: int, num_heads: int, dropout: float = 0.0
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.attention = AttentionBase(
+            in_features=in_features,
+            out_features=out_features,
+            num_heads=num_heads,
+            dropout=dropout,
+        )
+        self.to_q = nn.Linear(
+            in_features=in_features, out_features=in_features, bias=False
+        )
+        self.to_k = nn.Linear(
+            in_features=in_features, out_features=in_features, bias=False
+        )
+        self.to_v = nn.Linear(
+            in_features=in_features, out_features=out_features, bias=False
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, n, c = x.shape
+        # Dimensionality checks
+        assert c == self.in_features, "Expected input of shape [b, n, in_features]"
+        # Compute memory attention
+        q, k, v = self.to_q(x), self.to_k(x), self.to_v(x)
+        out = self.attention(q, k, v)
+        return out  # [b, n, out_features]
+
+
+class RABlock(nn.Module):
+    """Resize Attention Block"""
+
+    def __init__(
+        self,
+        in_tokens: int,
+        out_tokens: int,
+        in_features: int,
+        out_features: int,
+        num_heads: int,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.in_tokens = in_tokens
+        self.in_features = in_features
+        self.attention = AttentionBase(
+            in_features=in_features,
+            out_features=out_features,
+            num_heads=num_heads,
+            dropout=dropout,
+        )
+        self.q = nn.Parameter(torch.zeros(1, out_tokens, in_features))
+        self.q.data.data.normal_()
+        self.to_k = nn.Linear(
+            in_features=in_features, out_features=in_features, bias=False
+        )
+        self.to_v = nn.Linear(
+            in_features=in_features, out_features=out_features, bias=False
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, n, c = x.shape
+        # Dimensionality checks
+        comment = "Expected input of shape [b, in_tokens, in_features]"
+        assert n == self.in_tokens and c == self.in_features, comment
+        # Compute resize attention
+        q, k, v = self.q, self.to_k(x), self.to_v(x)
+        out = self.attention(q, k, v)
+        return out  # [b, out_tokens, out_features]
+
+
+class MABlock(nn.Module):
+    """Memory Attention Block"""
+
+    def __init__(
+        self,
+        memory_size: int,
+        in_features: int,
+        out_features: int,
+        num_heads: int,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.attention = AttentionBase(
+            in_features=in_features,
+            out_features=out_features,
+            num_heads=num_heads,
+            dropout=dropout,
+        )
+        self.to_q = nn.Linear(
+            in_features=in_features, out_features=in_features, bias=False
+        )
+        self.k = nn.Parameter(torch.zeros(1, memory_size, in_features))
+        self.k.data.data.normal_()
+        self.v = nn.Parameter(torch.zeros(1, memory_size, out_features))
+        self.v.data.data.normal_()
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, n, c = x.shape
+        # Dimensionality checks
+        assert c == self.in_features, "Expected input of shape [b, n, in_features]"
+        # Compute memory attention
+        q, k, v = self.to_q(x), self.k, self.v
+        out = self.attention(q, k, v)
+        return out  # [b, n, out_features]
