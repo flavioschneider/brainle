@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce
+from torch import Tensor, einsum
 
 
 class VectorQuantizer(nn.Module):
@@ -145,6 +146,102 @@ class VectorQuantizerEMA(nn.Module):
         self.ema_cluster_size.data.mul_(self.ema_decay).add_(
             batch_cluster_size, alpha=1 - self.ema_decay
         )  # [k]
+        self.ema_embedding_avg.data.mul_(self.ema_decay).add_(
+            batch_embedding_avg, alpha=1 - self.ema_decay
+        )
+        new_embedding = self.ema_embedding_avg / rearrange(
+            self.ema_cluster_size + 1e-5, "k -> k 1"
+        )
+        self.embedding.weight.data.copy_(new_embedding)
+
+
+"""
+    New unopinionated version
+"""
+
+
+class QuantizerBase(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, q: Tensor, k: Tensor) -> Tensor:
+        (n, c), (m, c_) = q.shape, k.shape
+        # Dimensionality checks
+        assert c == c_, "Expected q, k to have same number of channels"
+        # Compute similarity between queries and value vectors
+        similarity = self.similarity(q, k)  # [n, m]
+        # Get quatized indeces
+        z_indices = torch.argmin(similarity, dim=1)  # [n]
+        z_onehot = F.one_hot(z_indices, num_classes=m).float()  # [n, m]
+        # Get quantized vectors
+        z = einsum("n m, m c -> n c", z_onehot, k)
+        # Copy gradients to input
+        z = q + (z - q).detach()
+        return {
+            "embedding": z,
+            "indices": z_indices,
+            "onehot": z_onehot,
+            "perplexity": self.perplexity(z_onehot),
+        }
+
+    def similarity(self, q: Tensor, k: Tensor) -> Tensor:
+        l2_q = reduce(q ** 2, "n c -> n 1", "sum")
+        l2_k = reduce(k ** 2, "m c -> m", "sum")
+        sim = einsum("n c, m c -> n m", q, k)
+        return l2_q + l2_k - 2 * sim
+
+    def perplexity(self, z_onehot: Tensor) -> Tensor:
+        z_mean = reduce(z_onehot, "n m -> m", "mean")
+        perplexity = torch.exp(-torch.sum(z_mean * torch.log(z_mean + 1e-10)))
+        return perplexity
+
+
+class MQBlock(nn.Module):
+    """Memory Quantization Block with EMA"""
+
+    def __init__(
+        self,
+        features: int,
+        memory_size: int,
+        ema_decay: float = 0.99,
+        ema_epsilon: float = 1e-5,
+    ):
+        super().__init__()
+        self.memory_size = memory_size
+        self.quantizer = QuantizerBase()
+        self.ema_decay = ema_decay
+        self.ema_epsilon = ema_epsilon
+        # Embedding parameters
+        self.embedding = nn.Embedding(memory_size, features)
+        self.embedding.weight.data.normal_()
+        # Exponential Moving Average (EMA) parameters
+        self.register_buffer("ema_cluster_size", torch.zeros(memory_size))
+        self.register_buffer("ema_embedding_avg", self.embedding.weight.clone())
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, n, c = x.shape
+        # Flatten
+        q = rearrange(x, "b n c -> (b n) c")
+        # Compute quantization
+        k = self.embedding.weight
+        z = self.quantizer(q, k)
+        # Update embedding with EMA
+        if self.training:
+            self.update_embedding(z["embedding"], z["onehot"])
+        # Unflatten all and return
+        return {
+            "embedding": rearrange(z["embedding"], "(b n) c -> b n c", b=b),
+            "indices": rearrange(z["indices"], "(b n) -> b n", b=b),
+            "onehot": rearrange(z["onehot"], "(b n) m -> b n m", b=b),
+            "perplexity": z["perplexity"],
+        }
+
+    def update_embedding(self, z: Tensor, z_onehot: Tensor) -> None:
+        batch_cluster_size = reduce(z_onehot, "n m -> m", "sum")
+        batch_embedding_avg = einsum("n m, n c -> m c", z_onehot, z)
+        self.ema_cluster_size.data.mul_(self.ema_decay).add_(
+            batch_cluster_size, alpha=1 - self.ema_decay
+        )  # [m]
         self.ema_embedding_avg.data.mul_(self.ema_decay).add_(
             batch_embedding_avg, alpha=1 - self.ema_decay
         )
