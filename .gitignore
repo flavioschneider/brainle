@@ -8,3 +8,5 @@ logs/*
 data/*
 !data/.gitkeep
 outputs/*
+
+gym-miniworld/

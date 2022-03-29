@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -249,3 +251,53 @@ class MQBlock(nn.Module):
             self.ema_cluster_size + 1e-5, "k -> k 1"
         )
         self.embedding.weight.data.copy_(new_embedding)
+
+
+class MultiMQ(nn.Module):
+
+    """Memory Quantization with many codebooks."""
+
+    def __init__(
+        self,
+        channels_list: List[int],
+        memory_size: int,
+        ema_decay: float = 0.99,
+        ema_epsilon: float = 1e-5,
+    ):
+        super().__init__()
+        self.channels_list = channels_list
+        self.tot_channels = sum(channels_list)
+        self.num_blocks = len(self.channels_list)
+        self.channels_list += [0]  # To avoid loop overflow
+
+        self.blocks = nn.ModuleList(
+            [
+                MQBlock(
+                    features=channels,
+                    memory_size=memory_size,
+                    ema_decay=ema_decay,
+                    ema_epsilon=ema_epsilon,
+                )
+                for channels in channels_list
+            ]
+        )
+
+    def forward(self, z: Tensor):
+        b, n, c = z.shape
+        assert c == self.tot_channels, f"Expected channels_list to sum to {c}."
+
+        quantized = []
+        head, tail = 0, self.channels_list[0]
+
+        # Split channels into chunks and feead each into a different MQ block.
+        for i in range(self.num_blocks):
+            quantized += [self.blocks[i](z[:, :, head:tail])]
+            head = tail
+            tail = tail + self.channels_list[i + 1]
+
+        return {
+            "embedding": torch.cat([q["embedding"] for q in quantized], dim=2),
+            "indices": torch.cat([q["indices"] for q in quantized], dim=1),
+            "onehot": torch.cat([q["onehot"] for q in quantized], dim=1),
+            "perplexity": torch.tensor([q["perplexity"] for q in quantized]),
+        }
