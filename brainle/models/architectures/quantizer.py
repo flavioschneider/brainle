@@ -229,7 +229,7 @@ class MQBlock(nn.Module):
         z = self.quantizer(q, k)
         # Update embedding with EMA
         if self.training:
-            self.update_embedding(z["embedding"], z["onehot"])
+            self.update_embedding(q, z["onehot"])
         # Unflatten all and return
         return {
             "embedding": rearrange(z["embedding"], "(b n) c -> b n c", b=b),
@@ -238,9 +238,11 @@ class MQBlock(nn.Module):
             "perplexity": z["perplexity"],
         }
 
-    def update_embedding(self, z: Tensor, z_onehot: Tensor) -> None:
+    def update_embedding(self, q: Tensor, z_onehot: Tensor) -> None:
+        # Moves selected embeddings towards q using EMA
+
         batch_cluster_size = reduce(z_onehot, "n m -> m", "sum")
-        batch_embedding_avg = einsum("n m, n c -> m c", z_onehot, z)
+        batch_embedding_avg = einsum("n m, n c -> m c", z_onehot, q)
         self.ema_cluster_size.data.mul_(self.ema_decay).add_(
             batch_cluster_size, alpha=1 - self.ema_decay
         )  # [m]
