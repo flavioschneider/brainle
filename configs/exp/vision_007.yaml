@@ -4,7 +4,7 @@ type: model
 # 2x2 bottleneck resolution, but 4 codebooks instead of 1
 
 embedding_dim: 128
-num_embeddings: 512
+num_embeddings: 1024
 
 model:
   _target_: brainle.models.vision_model.MQFCModel
