@@ -37,12 +37,19 @@ class MQFCModel(pl.LightningModule):
 
     def forward(self, x: torch.Tensor):
         x_crops = self.cropper(x)
+        # Encode to latent
         z = self.encoder(x_crops)
         b, c, h, w = z.shape
-        z = rearrange(z, "b c h w -> b (h w) c")
-        quantize = self.quantizer(z)
-        x_pred = self.decoder(rearrange(z, "b (h w) c -> b c h w", h=h, w=w))
-        return x_crops, x_pred, z, quantize
+        # Flatten for quantizer
+        z_flat = rearrange(z, "b c h w -> b (h w) c")
+        # Compute quantization
+        quantize = self.quantizer(z_flat)
+        z_flat_quantized = quantize["embedding"]
+        # Unflatten quantization
+        z_quantized = rearrange(z_flat_quantized, "b (h w) c -> b c h w", h=h, w=w)
+        # Decode latent to image
+        x_pred = self.decoder(z_quantized)
+        return x_crops, x_pred, z_flat, quantize
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
