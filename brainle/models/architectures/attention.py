@@ -631,6 +631,16 @@ class UnpatcherBlock(nn.Module):
         return x
 
 
+class PositionalEmbedding(nn.Module):
+    def __init__(self, block_size: int, embedding_dim: int, init_std: float = 0.02):
+        super().__init__()
+        self.embedding = nn.Parameter(torch.zeros((1, block_size, embedding_dim)))
+        torch.nn.init.normal_(self.embedding, mean=0.0, std=init_std)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x + self.embedding
+
+
 class ConvTention(nn.Module):
     def __init__(
         self,
@@ -649,6 +659,9 @@ class ConvTention(nn.Module):
         self.in_features = in_features
         self.patchify = PatcherBlock(
             kernel_size=kernel_size, stride=stride, padding=padding
+        )
+        self.positional_embedding = PositionalEmbedding(
+            block_size=kenrel_size, embedding_dim=in_features
         )
 
         self.memory_attention = (
@@ -688,6 +701,7 @@ class ConvTention(nn.Module):
         assert c == self.in_features, "Expected third dim to equal in_features"
         x = self.patchify(x)
         x = rearrange(x, "b w k c -> (b w) k c")
+        x = self.positional_embedding(x)
         x = self.memory_attention(x)
         x = self.transformers(x)
         x = self.resize_attention(x)

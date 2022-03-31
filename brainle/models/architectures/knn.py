@@ -9,14 +9,15 @@ from torch import Tensor
 
 class KNNBlock(nn.Module):
 
-    """Approxiamte KNN adapted for pyTorch using the Faiss library."""
+    """Approxiamte KNN adapted for pyTorch using the Faiss library"""
 
     def __init__(self, features: int):
         super().__init__()
         self.features = features
-        self.index = faiss.IndexFlatL2(features)
+        self.index = faiss.IndexFlatIP(features)
 
     def push(self, x: Tensor) -> int:
+        """Adds x in the index (n vectors of dim `features`)"""
         # Convert to numpy
         x = x.cpu().detach().numpy()
         # Dimensionality check
@@ -28,6 +29,7 @@ class KNNBlock(nn.Module):
         return self.index.ntotal
 
     def forward(self, x: Tensor, k: int) -> Tensor:
+        """Searches the k most similar vectors to all n rows of x in the index"""
         # Convert to numpy
         x_numpy = x.cpu().detach().numpy()
         # Dimensionality check
