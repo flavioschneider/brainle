@@ -661,7 +661,7 @@ class ConvTention(nn.Module):
             kernel_size=kernel_size, stride=stride, padding=padding
         )
         self.positional_embedding = PositionalEmbedding(
-            block_size=kenrel_size, embedding_dim=in_features
+            block_size=kernel_size, embedding_dim=in_features
         )
 
         self.memory_attention = (
