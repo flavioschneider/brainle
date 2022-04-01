@@ -28,7 +28,7 @@ class KNNBlock(nn.Module):
         # Return number of items in the index
         return self.index.ntotal
 
-    def forward(self, x: Tensor, k: int) -> Tensor:
+    def forward(self, x: Tensor, k: int):
         """Searches the k most similar vectors to all n rows of x in the index"""
         # Convert to numpy
         x_numpy = x.cpu().detach().numpy()

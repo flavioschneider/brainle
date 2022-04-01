@@ -1,7 +1,9 @@
 # @package _global_
 type: model
 
-# ConvTeNet model
+# ConvMeNet model
+
+# TODO: memory size same size for bottleneck as for start, GPU KNN
 
 model:
   _target_: brainle.models.sm_model.SMModel
@@ -11,12 +13,12 @@ model:
     vocabulary_size: 837
     embedding_dim: 256
     num_layers: 7
-    num_attention_layers: 4
+    num_attention_layers: 2
     num_heads: 4
     window_size: 4
     use_skip: True
-    memory_size: 5_000
-    memory_items_per_query: 4
+    memory_size: 200_000
+    memory_items_per_query: 16
 
 datamodule:
   _target_: brainle.datamodules.wikitext_datamodule.WikiTextDatamodule

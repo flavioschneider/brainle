@@ -821,8 +821,8 @@ class KVMemory(nn.Module):
         assert kd == self.k_features, "Expected k of shape [m, k_features]"
         assert vd == self.v_features, "Expected v of shape [m, v_features]"
         # Update memory (with FIFO strategy)
-        self.k_memory = torch.cat([self.k_memory[m:], k])
-        self.v_memory = torch.cat([self.v_memory[m:], v])
+        self.k_memory = torch.cat([self.k_memory[m:], k.detach()])
+        self.v_memory = torch.cat([self.v_memory[m:], v.detach()])
         # Update index
         k_numpy = np.ascontiguousarray(k.cpu().detach().numpy())
         self.index.remove_ids(np.arange(m))
@@ -1002,17 +1002,25 @@ class ConvMemoTention(nn.Module):
 
         self.transformers = nn.Sequential(
             *[
-                MemoformerBlock(
+                TransformerBlock(
                     features=in_features,
                     num_heads=num_heads,
                     dropout_attention=dropout,
                     dropout_mlp=dropout,
                     mlp_multiplier=4,
-                    memory_size=memory_size,
-                    memory_items_per_query=memory_items_per_query,
                 )
                 for _ in range(num_layers)
             ]
+        )
+
+        self.memoformer = MemoformerBlock(
+            features=in_features,
+            num_heads=num_heads,
+            dropout_attention=dropout,
+            dropout_mlp=dropout,
+            mlp_multiplier=4,
+            memory_size=memory_size,
+            memory_items_per_query=memory_items_per_query,
         )
 
         self.resize_attention = RABlock(
@@ -1030,6 +1038,7 @@ class ConvMemoTention(nn.Module):
         x = rearrange(x, "b w k c -> (b w) k c")
         x = self.positional_embedding(x)
         x = self.transformers(x)
+        x = self.memoformer(x)
         x = self.resize_attention(x)
         x = rearrange(x, "(b w) ko co -> b (w ko) co", b=b)
         return x
