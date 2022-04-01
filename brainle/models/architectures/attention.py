@@ -810,9 +810,8 @@ class KVMemory(nn.Module):
         self.items_per_query = items_per_query
         # Initialize index for KNN search and memory
         if torch.cuda.is_available():
-            gpu_resource = faiss.StandardGpuResources()
             index_cpu = faiss.IndexFlatIP(k_features)
-            self.index = faiss.index_cpu_to_gpu(gpu_resource, 0, index_cpu)
+            self.index = faiss.index_cpu_to_all_gpus(index_cpu)
         else:
             self.index = faiss.IndexFlatIP(k_features)
         self.index.add(np.zeros((memory_size, k_features), dtype="float32"))
