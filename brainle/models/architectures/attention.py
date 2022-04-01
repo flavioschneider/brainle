@@ -942,3 +942,181 @@ class MABlock(nn.Module):
         w = self.sigmoid(w)
         out = w * a + (1 - w) * a_m
         return out
+
+
+class MemoformerBlock(nn.Module):
+    def __init__(
+        self,
+        features: int,
+        num_heads: int,
+        memory_size: int,
+        memory_items_per_query: int,
+        dropout_attention: float = 0.0,
+        dropout_mlp: float = 0.0,
+        mlp_multiplier: int = 4,
+    ):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(features)
+        self.attention = MABlock(
+            in_features=features,
+            out_features=features,
+            num_heads=num_heads,
+            dropout=dropout_attention,
+            memory_size=memory_size,
+            memory_items_per_query=memory_items_per_query,
+        )
+        self.mlp = FeedForwardBlock(
+            features=features, multiplier=mlp_multiplier, dropout=dropout_mlp
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.layer_norm(x)
+        x = x + self.attention(x)
+        x = x + self.mlp(x)
+        return x
+
+
+class ConvMemoTention(nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        out_patch_tokens: int,
+        num_heads: int,
+        num_layers: int,
+        kernel_size: int,
+        memory_size: int,
+        memory_items_per_query: int,
+        stride: int = 1,
+        padding: int = 0,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.patchify = PatcherBlock(
+            kernel_size=kernel_size, stride=stride, padding=padding
+        )
+        self.positional_embedding = PositionalEmbedding(
+            block_size=kernel_size, embedding_dim=in_features
+        )
+
+        self.transformers = nn.Sequential(
+            *[
+                MemoformerBlock(
+                    features=in_features,
+                    num_heads=num_heads,
+                    dropout_attention=dropout,
+                    dropout_mlp=dropout,
+                    mlp_multiplier=4,
+                    memory_size=memory_size,
+                    memory_items_per_query=memory_items_per_query,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.resize_attention = RABlock(
+            in_tokens=kernel_size,
+            out_tokens=out_patch_tokens,
+            in_features=in_features,
+            out_features=out_features,
+            num_heads=num_heads,
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, n, c = x.shape
+        assert c == self.in_features, "Expected third dim to equal in_features"
+        x = self.patchify(x)
+        x = rearrange(x, "b w k c -> (b w) k c")
+        x = self.positional_embedding(x)
+        x = self.transformers(x)
+        x = self.resize_attention(x)
+        x = rearrange(x, "(b w) ko co -> b (w ko) co", b=b)
+        return x
+
+
+class ConvMeNet(nn.Module):
+    def __init__(
+        self,
+        vocabulary_size: int,
+        embedding_dim: int,
+        num_layers: int,
+        num_attention_layers: int,
+        num_heads: int,
+        window_size: int,
+        memory_size: int,
+        memory_items_per_query: int,
+        use_skip: bool = True,
+    ):
+        super().__init__()
+
+        self.num_layers = num_layers
+        self.use_skip = use_skip
+
+        self.token_embedding = nn.Embedding(
+            num_embeddings=vocabulary_size, embedding_dim=embedding_dim
+        )
+
+        self.encoders = nn.ModuleList(
+            [
+                ConvMemoTention(
+                    in_features=embedding_dim,
+                    out_features=embedding_dim,
+                    num_heads=num_heads,
+                    num_layers=num_attention_layers,
+                    out_patch_tokens=window_size // 2,
+                    kernel_size=window_size,
+                    stride=window_size,
+                    padding=0,
+                    memory_size=memory_size,
+                    memory_items_per_query=memory_items_per_query,
+                    dropout=0.1,
+                )
+                for i in range(num_layers)
+            ]
+        )
+
+        self.decoders = nn.ModuleList(
+            [
+                ConvMemoTention(
+                    in_features=embedding_dim,
+                    out_features=embedding_dim,
+                    num_heads=num_heads,
+                    num_layers=num_attention_layers,
+                    out_patch_tokens=window_size * 2,
+                    kernel_size=window_size,
+                    stride=window_size,
+                    padding=0,
+                    memory_size=memory_size,
+                    memory_items_per_query=memory_items_per_query,
+                    dropout=0.1,
+                )
+                for i in list(reversed(range(num_layers)))
+            ]
+        )
+
+        self.head = nn.Sequential(
+            nn.LayerNorm(embedding_dim),
+            nn.Linear(in_features=embedding_dim, out_features=vocabulary_size),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, s = x.shape
+        L = self.num_layers
+
+        x = self.token_embedding(x)
+        xs = []
+
+        # Encode
+        for i in range(L):
+            x = self.encoders[i](x)
+            if self.use_skip and i < L - 1:
+                xs = [x] + xs
+
+        # Decode
+        for i in range(L):
+            x = self.decoders[i](x)
+            if self.use_skip and i < L - 1:
+                x += xs[i]
+
+        return self.head(x)

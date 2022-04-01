@@ -1,0 +1,64 @@
+# @package _global_
+type: model
+
+# ConvTeNet model
+
+model:
+  _target_: brainle.models.sm_model.SMModel
+  learning_rate: 1e-4
+  model:
+    _target_: brainle.models.architectures.attention.ConvMeNet
+    vocabulary_size: 837
+    embedding_dim: 256
+    num_layers: 7
+    num_attention_layers: 4
+    num_heads: 4
+    window_size: 4
+    use_skip: True
+    memory_size: 50_000
+    memory_items_per_query: 8
+
+datamodule:
+  _target_: brainle.datamodules.wikitext_datamodule.WikiTextDatamodule
+  train_val_split: [10537, 100] # 512, [21175, 100]
+  batch_size: 24
+  num_workers: 0
+  block_size: 1024
+  p_word_mask: 0.15
+  p_char_mask: 0.05
+
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    monitor: "valid_loss"   # name of the logged metric which determines when model is improving
+    save_top_k: 1           # save k best models (determined by above metric)
+    save_last: True         # additionaly always save model from last epoch
+    mode: "min"             # can be "max" or "min"
+    verbose: False
+    dirpath: ${logs_dir}/ckpts/${now:%Y-%m-%d-%H-%M-%S}
+    filename: '{epoch:02d}-{valid_loss:.3f}'
+
+  text_logger:
+    _target_: brainle.callbacks.sm_callback.TextLogger
+    batch_frequency: 10
+
+loggers:
+  wandb:
+    _target_: pytorch_lightning.loggers.wandb.WandbLogger
+    project: ${oc.env:WANDB_PROJECT}
+    entity: ${oc.env:WANDB_ENTITY}
+    # offline: False  # set True to store all logs only locally
+    job_type: "train"
+    group: ""
+    save_dir: ${logs_dir}
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  gpus: 0 # Set `1` to train on GPU, `0` to train on CPU only, and `-1` to train on all GPUs, default `0`
+  log_gpu_memory: all # Logs memory of GPUs, default `None`
+  precision: 32 # Precision used for tensors, default `32`
+  accelerator: null # `ddp` GPUs train individually and sync gradients, default `None`
+  min_epochs: 1
+  max_epochs: 100_000
+  weights_summary: top # Prints a summary of the model weights, default `top`
+  log_every_n_steps: 1 # Logs metrics every N batches
