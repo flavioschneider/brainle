@@ -1,6 +1,8 @@
 from math import sqrt
 from typing import List
 
+import faiss
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -431,7 +433,7 @@ class AttentionBase(nn.Module):
         q = rearrange(q, "b n (h hd) -> b h n hd", h=h)
         k = rearrange(k, "b m (h hd) -> b h m hd", h=h)
         v = rearrange(v, "b m (h vd) -> b h m vd", h=h)
-        # Compute similarty with memory
+        # Compute similarty with k
         sim = einsum("b h i l, b h j l -> b h i j", q, k) * self.scale
         # Compute attention scores
         att = sim.softmax(dim=-1)
@@ -470,7 +472,7 @@ class SABlock(nn.Module):
         b, n, c = x.shape
         # Dimensionality checks
         assert c == self.in_features, "Expected input of shape [b, n, in_features]"
-        # Compute memory attention
+        # Compute self attention
         q, k, v = self.to_q(x), self.to_k(x), self.to_v(x)
         out = self.attention(q, k, v)
         return out  # [b, n, out_features]
@@ -517,8 +519,8 @@ class RABlock(nn.Module):
         return out  # [b, out_tokens, out_features]
 
 
-class MABlock(nn.Module):
-    """Memory Attention Block"""
+class DMABlock(nn.Module):
+    """Differentiable Memory Attention Block"""
 
     def __init__(
         self,
@@ -539,6 +541,7 @@ class MABlock(nn.Module):
         self.to_q = nn.Linear(
             in_features=in_features, out_features=in_features, bias=False
         )
+        # Memory keys and values
         self.k = nn.Parameter(torch.zeros(1, memory_size, in_features))
         self.k.data.data.normal_()
         self.v = nn.Parameter(torch.zeros(1, memory_size, out_features))
@@ -665,7 +668,7 @@ class ConvTention(nn.Module):
         )
 
         self.memory_attention = (
-            MABlock(
+            DMABlock(
                 memory_size=memory_size,
                 in_features=in_features,
                 out_features=in_features,
@@ -788,3 +791,154 @@ class ConvTeNet(nn.Module):
                 x += xs[i]
 
         return self.head(x)
+
+
+""" Attention with memory """
+
+
+class KVMemory(nn.Module):
+
+    """Key value memory with FIFO replacement strategy."""
+
+    def __init__(
+        self, k_features: int, v_features: int, memory_size: int, items_per_query: int
+    ):
+        super().__init__()
+        self.k_features = k_features
+        self.v_features = v_features
+        self.memory_size = memory_size
+        self.items_per_query = items_per_query
+        # Initialize index for KNN search and memory
+        self.index = faiss.IndexFlatIP(k_features)
+        self.index.add(np.zeros((memory_size, k_features), dtype="float32"))
+        self.register_buffer("k_memory", torch.zeros(memory_size, k_features))
+        self.register_buffer("v_memory", torch.zeros(memory_size, v_features))
+
+    def insert(self, k: Tensor, v: Tensor):
+        (m, kd), (mv, vd) = k.shape, v.shape
+        assert m == mv, "Expected same number of keys and values"
+        assert m <= self.memory_size, "More items inserted than memory size"
+        assert kd == self.k_features, "Expected k of shape [m, k_features]"
+        assert vd == self.v_features, "Expected v of shape [m, v_features]"
+        # Update memory (with FIFO strategy)
+        self.k_memory = torch.cat([self.k_memory[m:], k])
+        self.v_memory = torch.cat([self.v_memory[m:], v])
+        # Update index
+        k_numpy = np.ascontiguousarray(k.cpu().detach().numpy())
+        self.index.remove_ids(np.arange(m))
+        self.index.add(k_numpy)
+
+    def forward(self, q: Tensor):
+        """Parses memory with query and returns keys, values."""
+        q_numpy = np.ascontiguousarray(q.cpu().detach().numpy())
+        # Dimensionality check
+        n, d = q.shape
+        assert d == self.k_features, f"Expected tensor of shape [n, k_features]"
+        # KNN search into index with `items_per_query` neighbors
+        i = self.items_per_query
+        distances, indices, embedding = self.index.search_and_reconstruct(q_numpy, i)
+        # Move to torch and same device
+        distances = torch.tensor(distances).to(q)
+        embedding = torch.tensor(embedding).to(q)
+        indices = torch.tensor(indices).to(q)
+        # Extract keys and values from memory
+        indices = rearrange(indices.to(torch.long), "n i -> (n i)")
+        k = self.k_memory[indices]
+        v = self.v_memory[indices]
+        # assert torch.all(k.eq(rearrange(embedding, 'n i d -> (n i) d'))), 'Index/memory mismatch.'
+        return k, v
+
+    def load_state_dict(self, state_dict):
+        super().load_state_dict(state_dict)
+        k_memory_numpy = self.k_memory.cpu().numpy()
+        # Update to index
+        self.index.remove_ids(np.arange(self.memory_size))
+        self.index.add(k_memory_numpy)
+
+
+class MABlock(nn.Module):
+    """Memory Attention Block"""
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        num_heads: int,
+        memory_size: int,
+        memory_items_per_query: int = 1,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.num_heads = num_heads
+        self.attention = AttentionBase(
+            in_features=in_features,
+            out_features=out_features,
+            num_heads=num_heads,
+            dropout=dropout,
+        )
+        # Initialize one memory per head
+        self.memories = nn.ModuleList(
+            [
+                KVMemory(
+                    k_features=in_features // num_heads,
+                    v_features=out_features // num_heads,
+                    memory_size=memory_size,
+                    items_per_query=memory_items_per_query,
+                )
+                for i in range(num_heads)
+            ]
+        )
+        # Queries
+        self.to_q = nn.Linear(
+            in_features=in_features, out_features=in_features, bias=False
+        )
+        # Keys
+        self.to_k = nn.Linear(
+            in_features=in_features, out_features=in_features, bias=False
+        )
+        # Values
+        self.to_v = nn.Linear(
+            in_features=in_features, out_features=out_features, bias=False
+        )
+        # Weight (how much the model should rely on memory)
+        self.to_w = nn.Linear(
+            in_features=in_features, out_features=out_features, bias=False
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x: Tensor) -> Tensor:
+        b, n, c = x.shape
+        # Dimensionality checks
+        assert c == self.in_features, "Expected input of shape [b, n, in_features]"
+
+        # Compute self attention
+        q, k, v, w = self.to_q(x), self.to_k(x), self.to_v(x), self.to_w(x)
+        a = self.attention(q, k, v)
+
+        # Rearrange for memory
+        q_m = q
+        q = rearrange(q, "b n (h hd) -> h (b n) hd", h=self.num_heads)
+        k = rearrange(k, "b m (h hd) -> h (b m) hd", h=self.num_heads)
+        v = rearrange(v, "b m (h vd) -> h (b m) vd", h=self.num_heads)
+
+        ks_memory, vs_memory = [], []
+        # Insert and parse memory for each attention head
+        for i in range(self.num_heads):
+            memory = self.memories[i]
+            # Add items from current head to memory
+            memory.insert(k[i], v[i])
+            # Query memory for keys and values
+            k_memory, v_memory = memory(q[i])
+            ks_memory += [k_memory]
+            vs_memory += [v_memory]
+
+        # Rearrange back for attention
+        k_m = rearrange(ks_memory, "h (b m) hd -> b m (h hd)", b=b)
+        v_m = rearrange(vs_memory, "h (b m) vd -> b m (h vd)", b=b)
+        a_m = self.attention(q_m, k_m, v_m)
+
+        # Gate between actual/memory attention
+        w = self.sigmoid(w)
+        out = w * a + (1 - w) * a_m
+        return out

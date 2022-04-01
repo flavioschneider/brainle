@@ -166,7 +166,7 @@ class QuantizerBase(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, q: Tensor, k: Tensor) -> Tensor:
+    def forward(self, q: Tensor, k: Tensor):
         (n, c), (m, c_) = q.shape, k.shape
         # Dimensionality checks
         assert c == c_, "Expected q, k to have same number of channels"
@@ -220,7 +220,7 @@ class MQBlock(nn.Module):
         self.register_buffer("ema_cluster_size", torch.zeros(memory_size))
         self.register_buffer("ema_embedding_avg", self.embedding.weight.clone())
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor):
         b, n, c = x.shape
         # Flatten
         q = rearrange(x, "b n c -> (b n) c")
