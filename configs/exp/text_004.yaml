@@ -15,13 +15,13 @@ model:
     num_heads: 4
     window_size: 4
     use_skip: True
-    memory_size: 50_000
-    memory_items_per_query: 8
+    memory_size: 5_000
+    memory_items_per_query: 4
 
 datamodule:
   _target_: brainle.datamodules.wikitext_datamodule.WikiTextDatamodule
   train_val_split: [10537, 100] # 512, [21175, 100]
-  batch_size: 24
+  batch_size: 16
   num_workers: 0
   block_size: 1024
   p_word_mask: 0.15
