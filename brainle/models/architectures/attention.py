@@ -823,8 +823,8 @@ class KVMemory(nn.Module):
         assert kd == self.k_features, "Expected k of shape [m, k_features]"
         assert vd == self.v_features, "Expected v of shape [m, v_features]"
         # Update memory (with FIFO strategy)
-        new_k_memory = torch.cat([self.k_memory[m:], k.detach().cpu()])
-        new_v_memory = torch.cat([self.v_memory[m:], v.detach().cpu()])
+        new_k_memory = torch.cat([self.k_memory[m:].cpu(), k.detach().cpu()])
+        new_v_memory = torch.cat([self.v_memory[m:].cpu(), v.detach().cpu()])
         self.k_memory.data.copy_(new_k_memory)
         self.v_memory.data.copy_(new_v_memory)
         # Update index
