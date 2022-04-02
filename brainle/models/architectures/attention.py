@@ -823,13 +823,13 @@ class KVMemory(nn.Module):
         assert kd == self.k_features, "Expected k of shape [m, k_features]"
         assert vd == self.v_features, "Expected v of shape [m, v_features]"
         # Update memory (with FIFO strategy)
-        new_k_memory = torch.cat([self.k_memory[m:].cpu(), k.detach().cpu()])
-        new_v_memory = torch.cat([self.v_memory[m:].cpu(), v.detach().cpu()])
+        new_k_memory = torch.cat([self.k_memory[m:], k.detach()])
+        new_v_memory = torch.cat([self.v_memory[m:], v.detach()])
         self.k_memory.data.copy_(new_k_memory)
         self.v_memory.data.copy_(new_v_memory)
         # Update index
         self.index = self.build_index()
-        self.index.add(self.k_memory.contiguous())
+        self.index.add(self.k_memory.contiguous().cpu())
 
     def forward(self, q: Tensor):
         """Parses memory with query and returns keys, values."""
@@ -841,8 +841,8 @@ class KVMemory(nn.Module):
         indices = self.index.search_and_reconstruct(q.contiguous().cpu(), i)[1]
         # Extract keys and values from memory
         indices = rearrange(indices, "n i -> (n i)")
-        k = self.k_memory[indices].to(q)
-        v = self.v_memory[indices].to(q)
+        k = self.k_memory[indices]
+        v = self.v_memory[indices]
         return k, v
 
     def build_index(self):
