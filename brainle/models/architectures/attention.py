@@ -811,12 +811,7 @@ class KVMemory(nn.Module):
         self.memory_size = memory_size
         self.items_per_query = items_per_query
         # Initialize index for KNN search and memory
-        self.index = faiss.IndexFlatIP(k_features)
-        # Move to GPU if available
-        if torch.cuda.is_available():
-            gpu_resource = faiss.StandardGpuResources()
-            gpu_resource.noTempMemory()  # Disable temporary memory (otherwise each index uses 2GB of GPU memory)
-            self.index = faiss.index_cpu_to_gpu(gpu_resource, 0, self.index)
+        self.index = self.build_index()
         self.index.add(torch.zeros((memory_size, k_features)))
         self.register_buffer("k_memory", torch.zeros(memory_size, k_features))
         self.register_buffer("v_memory", torch.zeros(memory_size, v_features))
@@ -831,8 +826,8 @@ class KVMemory(nn.Module):
         self.k_memory = torch.cat([self.k_memory[m:], k.detach()])
         self.v_memory = torch.cat([self.v_memory[m:], v.detach()])
         # Update index
-        self.index.remove_ids(np.arange(m))
-        self.index.add(k.contiguous())
+        self.index = self.build_index()
+        self.index.add(self.k_memory.contiguous())
 
     def forward(self, q: Tensor):
         """Parses memory with query and returns keys, values."""
@@ -855,12 +850,20 @@ class KVMemory(nn.Module):
         # assert torch.all(k.eq(rearrange(embedding, 'n i d -> (n i) d'))), 'Index/memory mismatch.'
         return k, v
 
+    def build_index(self):
+        index = faiss.IndexFlatIP(self.k_features)
+        # Move to GPU if available
+        if torch.cuda.is_available():
+            gpu_resource = faiss.StandardGpuResources()
+            gpu_resource.noTempMemory()  # Disable temporary memory (otherwise each index uses 2GB of GPU memory)
+            index = faiss.index_cpu_to_gpu(gpu_resource, 0, index)
+        return index
+
     def load_state_dict(self, state_dict):
         super().load_state_dict(state_dict)
-        k_memory_numpy = self.k_memory.cpu().numpy()
         # Update to index
-        self.index.remove_ids(np.arange(self.memory_size))
-        self.index.add(k_memory_numpy)
+        self.index = self.build_index()
+        self.index.add(self.k_memory)
 
 
 class MABlock(nn.Module):
