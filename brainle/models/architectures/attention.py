@@ -827,7 +827,7 @@ class KVMemory(nn.Module):
         self.v_memory = torch.cat([self.v_memory[m:], v.detach()])
         # Update index
         self.index.remove_ids(np.arange(m))
-        self.index.add(k)
+        self.index.add(k.contiguous())
 
     def forward(self, q: Tensor):
         """Parses memory with query and returns keys, values."""
@@ -836,7 +836,9 @@ class KVMemory(nn.Module):
         assert d == self.k_features, f"Expected tensor of shape [n, k_features]"
         # KNN search into index with `items_per_query` neighbors
         i = self.items_per_query
-        distances, indices, embedding = self.index.search_and_reconstruct(q, i)
+        distances, indices, embedding = self.index.search_and_reconstruct(
+            q.contiguous(), i
+        )
         # Move to torch and same device
         # distances = torch.tensor(distances).to(q)
         # embedding = torch.tensor(embedding).to(q)
