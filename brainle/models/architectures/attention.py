@@ -815,6 +815,7 @@ class KVMemory(nn.Module):
         # Move to GPU if available
         if torch.cuda.is_available():
             gpu_resource = faiss.StandardGpuResources()
+            gpu_resource.noTempMemory()  # Disable temporary memory (otherwise each index uses 2GB of GPU memory)
             self.index = faiss.index_cpu_to_gpu(gpu_resource, 0, self.index)
         self.index.add(torch.zeros((memory_size, k_features)))
         self.register_buffer("k_memory", torch.zeros(memory_size, k_features))
