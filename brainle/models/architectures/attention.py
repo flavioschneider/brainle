@@ -836,27 +836,21 @@ class KVMemory(nn.Module):
         assert d == self.k_features, f"Expected tensor of shape [n, k_features]"
         # KNN search into index with `items_per_query` neighbors
         i = self.items_per_query
-        distances, indices, embedding = self.index.search_and_reconstruct(
-            q.contiguous(), i
-        )
-        # Move to torch and same device
-        # distances = torch.tensor(distances).to(q)
-        # embedding = torch.tensor(embedding).to(q)
-        indices = torch.tensor(indices).to(q)
+        indices = self.index.search_and_reconstruct(q.contiguous(), i)[1]
         # Extract keys and values from memory
-        indices = rearrange(indices.to(torch.long), "n i -> (n i)")
+        indices = rearrange(indices, "n i -> (n i)")
         k = self.k_memory[indices]
         v = self.v_memory[indices]
-        # assert torch.all(k.eq(rearrange(embedding, 'n i d -> (n i) d'))), 'Index/memory mismatch.'
         return k, v
 
     def build_index(self):
         index = faiss.IndexFlatIP(self.k_features)
         # Move to GPU if available
-        if torch.cuda.is_available():
-            gpu_resource = faiss.StandardGpuResources()
-            gpu_resource.noTempMemory()  # Disable temporary memory (otherwise each index uses 2GB of GPU memory)
-            index = faiss.index_cpu_to_gpu(gpu_resource, 0, index)
+        # faiss.omp_set_num_threads(8)
+        # if torch.cuda.is_available():
+        #    gpu_resource = faiss.StandardGpuResources()
+        #    gpu_resource.noTempMemory()  # Disable temporary memory (otherwise each index uses 2GB of GPU memory)
+        #    index = faiss.index_cpu_to_gpu(gpu_resource, 0, index)
         return index
 
     def load_state_dict(self, state_dict):
