@@ -1,7 +1,7 @@
 # @package _global_
 type: model
 
-# ConvTeNet model, 1 more layer
+# ConvTeNet model, larger window
 
 model:
   _target_: brainle.models.sm_model.SMModel
@@ -10,10 +10,10 @@ model:
     _target_: brainle.models.architectures.attention.ConvTeNet
     vocabulary_size: 837
     embedding_dim: 256
-    num_layers: 8
+    num_layers: 7
     num_heads: 4
-    num_attention_layers: 3
-    window_size: 4
+    num_attention_layers: 4
+    window_size: 8
     use_skip: True
 
 datamodule:
