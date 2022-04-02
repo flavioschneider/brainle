@@ -823,8 +823,8 @@ class KVMemory(nn.Module):
         assert kd == self.k_features, "Expected k of shape [m, k_features]"
         assert vd == self.v_features, "Expected v of shape [m, v_features]"
         # Update memory (with FIFO strategy)
-        new_k_memory = torch.cat([self.k_memory[m:], k.detach()])
-        new_v_memory = torch.cat([self.v_memory[m:], v.detach()])
+        new_k_memory = torch.cat([self.k_memory[m:], k.detach().cpu()])
+        new_v_memory = torch.cat([self.v_memory[m:], v.detach().cpu()])
         self.k_memory.data.copy_(new_k_memory)
         self.v_memory.data.copy_(new_v_memory)
         # Update index
@@ -838,21 +838,21 @@ class KVMemory(nn.Module):
         assert d == self.k_features, f"Expected tensor of shape [n, k_features]"
         # KNN search into index with `items_per_query` neighbors
         i = self.items_per_query
-        indices = self.index.search_and_reconstruct(q.contiguous(), i)[1]
+        indices = self.index.search_and_reconstruct(q.contiguous().cpu(), i)[1]
         # Extract keys and values from memory
         indices = rearrange(indices, "n i -> (n i)")
-        k = self.k_memory[indices]
-        v = self.v_memory[indices]
+        k = self.k_memory[indices].to(q)
+        v = self.v_memory[indices].to(q)
         return k, v
 
     def build_index(self):
         index = faiss.IndexFlatIP(self.k_features)
         # Move to GPU if available
-        # faiss.omp_set_num_threads(8)
-        if torch.cuda.is_available():
-            gpu_resource = faiss.StandardGpuResources()
-            gpu_resource.noTempMemory()  # Disable temporary memory (otherwise each index uses 2GB of GPU memory)
-            index = faiss.index_cpu_to_gpu(gpu_resource, 0, index)
+        faiss.omp_set_num_threads(16)
+        # if torch.cuda.is_available():
+        #    gpu_resource = faiss.StandardGpuResources()
+        #    gpu_resource.noTempMemory()  # Disable temporary memory (otherwise each index uses 2GB of GPU memory)
+        #    index = faiss.index_cpu_to_gpu(gpu_resource, 0, index)
         return index
 
     def load_state_dict(self, state_dict):
