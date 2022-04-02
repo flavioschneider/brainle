@@ -795,6 +795,8 @@ class ConvTeNet(nn.Module):
 
 """ Attention with memory """
 
+import faiss.contrib.torch_utils
+
 
 class KVMemory(nn.Module):
 
@@ -828,22 +830,20 @@ class KVMemory(nn.Module):
         self.k_memory = torch.cat([self.k_memory[m:], k.detach()])
         self.v_memory = torch.cat([self.v_memory[m:], v.detach()])
         # Update index
-        k_numpy = np.ascontiguousarray(k.cpu().detach().numpy())
         self.index.remove_ids(np.arange(m))
-        self.index.add(k_numpy)
+        self.index.add(k)
 
     def forward(self, q: Tensor):
         """Parses memory with query and returns keys, values."""
-        q_numpy = np.ascontiguousarray(q.cpu().detach().numpy())
         # Dimensionality check
         n, d = q.shape
         assert d == self.k_features, f"Expected tensor of shape [n, k_features]"
         # KNN search into index with `items_per_query` neighbors
         i = self.items_per_query
-        distances, indices, embedding = self.index.search_and_reconstruct(q_numpy, i)
+        distances, indices, embedding = self.index.search_and_reconstruct(q, i)
         # Move to torch and same device
-        distances = torch.tensor(distances).to(q)
-        embedding = torch.tensor(embedding).to(q)
+        # distances = torch.tensor(distances).to(q)
+        # embedding = torch.tensor(embedding).to(q)
         indices = torch.tensor(indices).to(q)
         # Extract keys and values from memory
         indices = rearrange(indices.to(torch.long), "n i -> (n i)")
