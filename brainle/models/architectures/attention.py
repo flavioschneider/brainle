@@ -718,10 +718,10 @@ class ConvTeNet(nn.Module):
         vocabulary_size: int,
         embedding_dim: int,
         num_layers: int,
-        num_layers_bottleneck: int,
         num_attention_layers: int,
         num_heads: int,
         window_size: int,
+        num_layers_bottleneck: int = 0,
         use_skip: bool = True,
     ):
         super().__init__()
