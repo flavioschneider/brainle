@@ -21,6 +21,8 @@ class MaskedCharDataset(Dataset):
         # Keep index 0 for mask
         self.char_to_id = {char: idx + 1 for idx, char in enumerate(alphabet)}
         self.id_to_char = {idx + 1: char for idx, char in enumerate(alphabet)}
+        self.id_to_char[0] = "▢"
+        self.id_to_char["▢"] = 0
 
         self.block_size = block_size
         self.alphabet = alphabet
