@@ -718,6 +718,7 @@ class ConvTeNet(nn.Module):
         vocabulary_size: int,
         embedding_dim: int,
         num_layers: int,
+        num_layers_bottleneck: int,
         num_attention_layers: int,
         num_heads: int,
         window_size: int,
@@ -726,6 +727,7 @@ class ConvTeNet(nn.Module):
         super().__init__()
 
         self.num_layers = num_layers
+        self.num_layers_bottleneck = num_layers_bottleneck
         self.use_skip = use_skip
 
         self.token_embedding = nn.Embedding(
@@ -747,6 +749,19 @@ class ConvTeNet(nn.Module):
                     dropout=0.1,
                 )
                 for i in range(num_layers)
+            ]
+        )
+
+        self.bottleneck = nn.ModuleList(
+            [
+                TransformerBlock(
+                    features=embedding_dim,
+                    num_heads=num_heads,
+                    dropout_attention=0.1,
+                    dropout_mlp=0.1,
+                    mlp_multiplier=4,
+                )
+                for i in range(num_layers_bottleneck)
             ]
         )
 
@@ -775,7 +790,7 @@ class ConvTeNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, s = x.shape
-        L = self.num_layers
+        L, BL = self.num_layers, self.num_layers_bottleneck
 
         x = self.token_embedding(x)
         xs = []
@@ -785,6 +800,10 @@ class ConvTeNet(nn.Module):
             x = self.encoders[i](x)
             if self.use_skip and i < L - 1:
                 xs = [x] + xs
+
+        # Bottleneck
+        for i in range(BL):
+            x = self.bottleneck[i](x)
 
         # Decode
         for i in range(L):

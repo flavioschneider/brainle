@@ -11,8 +11,9 @@ model:
     vocabulary_size: 837
     embedding_dim: 256
     num_layers: 7
+    num_layers_bottleneck: 16
     num_heads: 4
-    num_attention_layers: 6
+    num_attention_layers: 4
     window_size: 4
     use_skip: True
 
