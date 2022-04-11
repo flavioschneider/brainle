@@ -23,6 +23,9 @@ datasets==1.18.3
 tokenizers==0.11.5
 matplotlib==3.5.1
 faiss-cpu==1.7.2
+networkx==2.8
+pydot==1.4.2
+pygraphviz==1.9 # needs graphviz installed on OS
 #
 plotly==5.3.1
 tqdm==4.62.3
