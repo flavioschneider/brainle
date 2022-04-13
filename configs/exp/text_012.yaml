@@ -1,29 +1,26 @@
 # @package _global_
 type: model
 
-# ConvTeNet model, smaller LR
+# Bigram Model
 
 model:
-  _target_: brainle.models.text_model.TextModel
+  _target_: brainle.models.text_model.TextModelDict
   learning_rate: 1e-5
   model:
-    _target_: brainle.models.architectures.attention.ConvTeNet
+    _target_: brainle.models.architectures.grams.BigramNet
     vocabulary_size: 837
-    embedding_dim: 256
-    num_layers: 7
-    num_heads: 4
-    num_attention_layers: 4
-    window_size: 4
-    use_skip: True
+    num_features: 64
+    num_tokens: 64
+    num_nodes: 32
 
 datamodule:
   _target_: brainle.datamodules.wikitext_datamodule.WikiTextDatamodule
-  train_val_split: [10537, 100] # 512, [21175, 100]
-  batch_size: 24
+  train_val_split: [170101, 100]
+  batch_size: 256
   num_workers: 0
-  block_size: 1024
-  p_word_mask: 0.15
-  p_char_mask: 0.05
+  block_size: 64
+  p_word_mask: 0.0
+  p_char_mask: 0.0
 
 callbacks:
   model_checkpoint:
@@ -37,8 +34,8 @@ callbacks:
     filename: '{epoch:02d}-{valid_loss:.3f}'
 
   text_logger:
-    _target_: brainle.callbacks.text_callback.TextLogger
-    batch_frequency: 10
+    _target_: brainle.callbacks.text_callback.BigramLogger
+    batch_frequency: 800
 
 loggers:
   wandb:

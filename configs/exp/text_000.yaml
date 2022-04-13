@@ -4,7 +4,7 @@ type: model
 # Bidirectional GPT Model
 
 model:
-  _target_: brainle.models.sm_model.SMModel
+  _target_: brainle.models.text_model.TextModel
   learning_rate: 0.01
   model:
     _target_: brainle.models.architectures.attention.GPT
@@ -39,7 +39,7 @@ callbacks:
     filename: '{epoch:02d}-{valid_loss:.3f}'
 
   text_logger:
-    _target_: brainle.callbacks.sm_callback.TextLogger
+    _target_: brainle.callbacks.text_callback.TextLogger
     batch_frequency: 10
 
 loggers:
