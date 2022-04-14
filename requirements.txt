@@ -26,8 +26,8 @@ matplotlib==3.5.1
 faiss-cpu==1.7.2
 networkx==2.8
 pydot==1.4.2
-pygraphviz==1.9 # needs graphviz installed on OS
 plotly==5.7.0
 #
 tqdm==4.62.3
 rich==12.2.0
+pygraphviz==1.9 # needs graphviz installed on OS

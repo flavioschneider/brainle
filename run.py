@@ -1,3 +1,4 @@
+import logging
 import os
 
 import dotenv
@@ -9,7 +10,7 @@ from brainle import utils
 
 # Load environment variables from `.env`.
 dotenv.load_dotenv(override=True)
-log = utils.get_logger(__name__)
+log = logging.getLogger(__name__)
 
 
 @hydra.main(config_path="configs/", config_name="config.yaml")
