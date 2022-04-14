@@ -1,10 +1,15 @@
+import io
+
 import matplotlib.pyplot as plt
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 import torch
 import torch.nn.functional as F
 import torchvision
 import wandb
 from einops import rearrange
+from PIL import Image
 from pytorch_lightning import Callback, Trainer
 from pytorch_lightning.loggers import LoggerCollection, WandbLogger
 
@@ -87,10 +92,19 @@ class BigramLogger(Callback):
     ):
         self.log_txt(trainer, pl_module, batch, batch_idx, split="val")
 
-    def plot_attention_matrix(self, x):
-        w, h = x.shape
-        fig = plt.imshow(x, vmin=0, vmax=1)
-        return fig
+    def plot_attention_matrix(self, matrix, labels):
+        w, h = matrix.shape
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=matrix,
+                text=[labels] * h,
+                texttemplate="%{text}",
+                textfont={"size": 20},
+            )
+        )
+        fig_bytes = fig.to_image(format="png")
+        buf = io.BytesIO(fig_bytes)
+        return Image.open(buf)
 
     def log_txt(self, trainer, pl_module, batch, batch_idx, split):
         if batch_idx % self.batch_frequency == 0:
@@ -117,11 +131,11 @@ class BigramLogger(Callback):
                 text_pred = "".join(
                     dataset.decode(ids[i].detach().cpu().numpy().tolist())
                 )
-                matrix = self.plot_attention_matrix(
-                    out["att"][i].detach().cpu().numpy()
-                )
+                matrix = out["att"][i].detach().cpu().numpy()
+                matrix_image = self.plot_attention_matrix(matrix, list(text))
+                # print(list(text), matrix.shape)
                 text_table.add_data(
-                    f"{self.count}_{i}", text, text_pred, wandb.Image(matrix)
+                    f"{self.count}_{i}", text, text_pred, wandb.Image(matrix_image)
                 )
 
             wandb_logger.experiment.log({"text_table": text_table})
