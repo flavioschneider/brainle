@@ -1,4 +1,4 @@
-# import logging
+import logging
 import warnings
 from typing import List, Sequence
 
@@ -8,10 +8,37 @@ import rich.tree
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.utilities import rank_zero_only
 
-# log = logging.getLogger(__name__)
 
-"""
+def get_logger(name=__name__) -> logging.Logger:
+    """Initializes multi-GPU-friendly python command line logger."""
+
+    logger = logging.getLogger(name)
+
+    # this ensures all logging levels get marked with the rank zero decorator
+    # otherwise logs would get multiplied for each GPU process in multi-GPU setup
+    for level in (
+        "debug",
+        "info",
+        "warning",
+        "error",
+        "exception",
+        "fatal",
+        "critical",
+    ):
+        setattr(logger, level, rank_zero_only(getattr(logger, level)))
+
+    return logger
+
+
+log = get_logger(__name__)
+
+
 def extras(config: DictConfig) -> None:
+    """Applies optional utilities, controlled by config flags.
+    Utilities:
+    - Ignoring python warnings
+    - Rich config printing
+    """
 
     # disable python warnings if <config.ignore_warnings=True>
     if config.get("ignore_warnings"):
@@ -22,7 +49,6 @@ def extras(config: DictConfig) -> None:
     if config.get("print_config"):
         log.info("Printing config tree with Rich! <config.print_config=True>")
         print_config(config, resolve=True)
-"""
 
 
 @rank_zero_only
