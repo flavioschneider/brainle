@@ -1,4 +1,4 @@
-import logging
+# import logging
 import warnings
 from typing import List, Sequence
 
@@ -8,15 +8,10 @@ import rich.tree
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.utilities import rank_zero_only
 
-log = logging.getLogger(__name__)
+# log = logging.getLogger(__name__)
 
-
+"""
 def extras(config: DictConfig) -> None:
-    """Applies optional utilities, controlled by config flags.
-    Utilities:
-    - Ignoring python warnings
-    - Rich config printing
-    """
 
     # disable python warnings if <config.ignore_warnings=True>
     if config.get("ignore_warnings"):
@@ -27,6 +22,7 @@ def extras(config: DictConfig) -> None:
     if config.get("print_config"):
         log.info("Printing config tree with Rich! <config.print_config=True>")
         print_config(config, resolve=True)
+"""
 
 
 @rank_zero_only

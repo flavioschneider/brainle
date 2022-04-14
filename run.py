@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 def main(config: DictConfig) -> None:
 
     # Logs config tree
-    utils.extras(config)
+    # utils.extras(config)
 
     # Apply seed for reproducibility
     pl.seed_everything(config.seed)
