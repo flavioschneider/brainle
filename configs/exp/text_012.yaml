@@ -5,7 +5,7 @@ type: model
 
 model:
   _target_: brainle.models.text_model.TextModelDict
-  learning_rate: 1e-5
+  learning_rate: 1e-4
   model:
     _target_: brainle.models.architectures.grams.BigramNet
     vocabulary_size: 837
@@ -23,6 +23,10 @@ datamodule:
   p_char_mask: 0.0
 
 callbacks:
+
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.RichProgressBar
+
   model_checkpoint:
     _target_: pytorch_lightning.callbacks.ModelCheckpoint
     monitor: "valid_loss"   # name of the logged metric which determines when model is improving
@@ -33,9 +37,14 @@ callbacks:
     dirpath: ${logs_dir}/ckpts/${now:%Y-%m-%d-%H-%M-%S}
     filename: '{epoch:02d}-{valid_loss:.3f}'
 
+  model_summary:
+    _target_: pytorch_lightning.callbacks.RichModelSummary
+    max_depth: 2
+
   text_logger:
     _target_: brainle.callbacks.text_callback.BigramLogger
     batch_frequency: 800
+
 
 loggers:
   wandb:
@@ -55,5 +64,5 @@ trainer:
   accelerator: null # `ddp` GPUs train individually and sync gradients, default `None`
   min_epochs: 1
   max_epochs: 100_000
-  weights_summary: top # Prints a summary of the model weights, default `top`
+  enable_model_summary: False
   log_every_n_steps: 1 # Logs metrics every N batches

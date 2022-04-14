@@ -1,10 +1,17 @@
 defaults:
   - _self_    # Self properties added before exp, hence exp can override e.g. seed.
   - exp: null
+  - override hydra/hydra_logging: colorlog
+  - override hydra/job_logging: colorlog
 
 seed: 12345
+train: True
+test: False
+ignore_warnings: True
+print_config: False # Prints tree with all configurations
 work_dir: ${hydra:runtime.cwd}  # This is the root of the project
 logs_dir: ${oc.env:DIR_LOGS}  # This is the root for all logs
+# Hydra experiment configs log dir
 hydra:
   run:
     dir: ${logs_dir}/runs/${now:%Y-%m-%d-%H-%M-%S}
