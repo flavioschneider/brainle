@@ -5,7 +5,7 @@ type: model
 
 model:
   _target_: brainle.models.text_model.TextModelDict
-  learning_rate: 1e-4
+  learning_rate: 1e-3
   model:
     _target_: brainle.models.architectures.grams.BigramNet
     vocabulary_size: 837

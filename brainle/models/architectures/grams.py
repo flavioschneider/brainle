@@ -71,7 +71,8 @@ class BigramDecoder(nn.Module):
         self.num_layers = num_layers
 
         self.to_g = nn.Linear(in_features=num_nodes, out_features=num_tokens)
-        self.layers = FeedForwardBlock(num_features, multiplier=2)
+        self.layers_g = FeedForwardBlock(num_features, multiplier=2)
+        self.layers_out = FeedForwardBlock(num_features, multiplier=2)
         self.to_s = nn.Linear(
             in_features=num_features,
             out_features=num_features,
@@ -87,10 +88,12 @@ class BigramDecoder(nn.Module):
         g_t, s = self.to_g(y_t), self.to_s(y)
         g = rearrange(g_t, "b c n -> b n c")
         if self.num_layers > 0:
-            g = self.layers(g)
+            g = self.layers_g(g)
         # Flow graph backwards
         b = einsum("b l i, b l j -> b i j", att, s)
         out = g + b
+        if self.num_layers > 0:
+            out = self.layers_out(out)
         return out
 
 

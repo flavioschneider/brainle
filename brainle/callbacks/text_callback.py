@@ -122,7 +122,9 @@ class BigramLogger(Callback):
             ids = torch.topk(distribution, k=1, dim=-1)[1]
             ids = rearrange(ids, "b s 1 -> b s")
 
-            text_table = wandb.Table(columns=["id", "text", "text_pred", "matrix"])
+            text_table = wandb.Table(
+                columns=["id", "text", "text_pred", "matrix", "mask"]
+            )
 
             for i in range(10):
                 text = "".join(
@@ -131,11 +133,19 @@ class BigramLogger(Callback):
                 text_pred = "".join(
                     dataset.decode(ids[i].detach().cpu().numpy().tolist())
                 )
+                # Get attention matrix image with text overlay
                 matrix = out["att"][i].detach().cpu().numpy()
                 matrix_image = self.plot_attention_matrix(matrix, list(text))
-                # print(list(text), matrix.shape)
+                # Get mask image with text_pred overlay
+                mask = out["att"][i].gt(0).float().detach().cpu().numpy()
+                mask_image = self.plot_attention_matrix(mask, list(text_pred))
+
                 text_table.add_data(
-                    f"{self.count}_{i}", text, text_pred, wandb.Image(matrix_image)
+                    f"{self.count}_{i}",
+                    text,
+                    text_pred,
+                    wandb.Image(matrix_image),
+                    wandb.Image(mask_image),
                 )
 
             wandb_logger.experiment.log({"text_table": text_table})
